@@ -11,6 +11,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.1] — 2026-05-19
+
+### Fixed
+- Search result people cards now link to the local `/@user@domain` profile page instead of the remote instance URL, so users can follow remote accounts without leaving the instance
+- Search UI redesigned: replaced all inline styles with design-token CSS classes for consistent theming, dark-mode support, and hover states
+
+### Added
+- Section labels with result counts on search results page
+- Post cards in search results with author avatar, handle, date permalink, and hover highlight
+- Polished empty-state and search-hints panels
+
+---
+
 ## [1.0.0] — 2026-05-19
 
 First public release. Full-featured self-hosted ActivityPub/Mastodon-compatible
@@ -127,4 +140,5 @@ v2.0.0   — major: breaking DB changes, removed APIs, architectural rewrites
 
 Tag every release: `git tag -a v1.0.1 -m "Fix: description"` then `git push origin v1.0.1`.
 
+[1.0.1]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.1
 [1.0.0]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.0
