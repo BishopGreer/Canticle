@@ -8,89 +8,86 @@ $totalResults = count($accounts) + count($statuses) + count($hashtags);
 ?>
 
 <!-- ── Search bar ─────────────────────────────────────────────────────────── -->
-<form method="GET" action="/search" style="margin-bottom:1.25rem">
-  <div style="display:flex;gap:.5rem">
-    <input type="search" name="q" value="<?= htmlspecialchars($q) ?>"
-           placeholder="Search posts, people, tags…"
-           autofocus
-           style="flex:1;padding:.6rem .85rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:1rem">
-    <button type="submit" class="btn btn-primary" style="padding:.6rem 1.1rem">Search</button>
-  </div>
+<form method="GET" action="/search" class="search-bar">
+  <input type="search" name="q" value="<?= htmlspecialchars($q) ?>"
+         placeholder="Search posts, people, tags…"
+         autofocus>
+  <button type="submit" class="btn btn-primary">Search</button>
 </form>
 
 <?php if ($q !== ''): ?>
 
 <!-- ── Filter tabs ───────────────────────────────────────────────────────── -->
-<div style="display:flex;gap:.25rem;flex-wrap:wrap;margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:.5rem">
+<div class="search-tabs">
   <?php
   $tabs = ['all' => 'All', 'people' => 'People', 'posts' => 'Posts', 'tags' => 'Hashtags'];
   foreach ($tabs as $tabKey => $tabLabel):
     $active = $type === $tabKey;
   ?>
     <a href="/search<?= $qs(['type' => $tabKey]) ?>"
-       style="padding:.35rem .75rem;border-radius:var(--radius-sm);font-size:.9rem;text-decoration:none;
-              background:<?= $active ? 'var(--primary)' : 'var(--surface)' ?>;
-              color:<?= $active ? '#fff' : 'var(--text)' ?>;
-              box-shadow:var(--shadow-sm)">
+       class="search-tab<?= $active ? ' active' : '' ?>">
       <?= $tabLabel ?>
     </a>
   <?php endforeach; ?>
 
-  <div style="margin-left:auto;display:flex;align-items:center;gap:.4rem;font-size:.88rem;color:var(--muted)">
-    <label style="display:flex;align-items:center;gap:.3rem;cursor:pointer">
-      <input type="checkbox" form="__none__"
-             onclick="window.location='/search<?= $qs(['local' => $local ? null : '1']) ?>'"
-             <?= $local ? 'checked' : '' ?>>
-      Local only
-    </label>
-  </div>
+  <label class="search-local-toggle">
+    <input type="checkbox"
+           onclick="window.location='/search<?= $qs(['local' => $local ? null : '1']) ?>'"
+           <?= $local ? 'checked' : '' ?>>
+    Local only
+  </label>
 </div>
 
-<?php if ($q !== '' && $totalResults === 0): ?>
-  <div style="text-align:center;padding:3rem 1rem;color:var(--muted)">
-    No results for <strong><?= htmlspecialchars($q) ?></strong>.<br>
-    <span style="font-size:.88rem">Try a different term, or search for <code>@user@domain</code> to find remote accounts.</span>
+<?php if ($totalResults === 0): ?>
+  <div class="search-empty">
+    <div class="search-empty-icon">🔍</div>
+    <p>No results for <strong><?= htmlspecialchars($q) ?></strong></p>
+    <p class="search-empty-hint">Try a different term, or use <code>@user@domain</code> to find a remote account.</p>
   </div>
 <?php endif; ?>
 
 <!-- ── People ──────────────────────────────────────────────────────────── -->
 <?php if (($type === 'all' || $type === 'people') && !empty($accounts)): ?>
-<section style="margin-bottom:1.5rem">
+<section class="search-section">
   <?php if ($type === 'all'): ?>
-    <h2 style="font-size:1rem;font-weight:600;margin:0 0 .6rem;color:var(--muted)">
-      People <span style="font-weight:400">(<?= count($accounts) ?>)</span>
+    <h2 class="search-section-label">
+      People <span class="search-section-count"><?= count($accounts) ?></span>
     </h2>
   <?php endif; ?>
 
-  <div style="display:flex;flex-direction:column;gap:.5rem">
+  <div class="people-list">
   <?php foreach ($accounts as $acct):
-    $acctUrl = $acct['url'] ?? '#';
-    $isLocal  = !str_contains($acct['acct'] ?? '', '@');
-    $webUrl   = $isLocal ? $baseUrl . '/@' . $acct['username'] : $acctUrl;
+    $isLocal = !str_contains($acct['acct'] ?? '', '@');
+    // Always link to local profile page so the user can follow from here
+    $webUrl  = $isLocal
+      ? $baseUrl . '/@' . $acct['username']
+      : $baseUrl . '/@' . $acct['acct'];
   ?>
-    <a href="<?= htmlspecialchars($webUrl) ?>"
-       style="display:flex;gap:.75rem;align-items:center;padding:.75rem;background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);text-decoration:none;color:var(--text)">
+    <a href="<?= htmlspecialchars($webUrl) ?>" class="person-card">
       <img src="<?= htmlspecialchars($acct['avatar'] ?? $baseUrl . '/assets/img/default_avatar.svg') ?>"
-           alt="" class="avatar" style="width:44px;height:44px;flex-shrink:0">
-      <div style="min-width:0">
-        <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+           alt="" class="avatar" style="width:46px;height:46px;flex-shrink:0">
+      <div class="person-card-info">
+        <div class="person-card-name">
           <?= htmlspecialchars($acct['display_name'] ?: $acct['username']) ?>
           <?php if ($acct['bot'] ?? false): ?>
-            <span style="font-size:.75rem;background:var(--surface-2);border-radius:3px;padding:.1rem .35rem;margin-left:.25rem;color:var(--muted)">BOT</span>
+            <span class="person-card-badge remote">BOT</span>
+          <?php endif; ?>
+          <?php if ($isLocal): ?>
+            <span class="person-card-badge local">local</span>
           <?php endif; ?>
         </div>
-        <div style="font-size:.85rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        <div class="person-card-handle">
           @<?= htmlspecialchars($isLocal ? $acct['username'] : ($acct['acct'] ?? $acct['username'])) ?>
         </div>
         <?php if (!empty($acct['note'])): ?>
-          <div style="font-size:.83rem;color:var(--muted);margin-top:.2rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-            <?= htmlspecialchars(mb_substr(strip_tags($acct['note']), 0, 100)) ?>
+          <div class="person-card-bio">
+            <?= htmlspecialchars(mb_substr(strip_tags($acct['note']), 0, 120)) ?>
           </div>
         <?php endif; ?>
       </div>
-      <div style="margin-left:auto;text-align:right;font-size:.8rem;color:var(--muted);flex-shrink:0">
-        <div><?= number_format($acct['followers_count'] ?? 0) ?> followers</div>
-        <?= $isLocal ? '<div style="color:var(--primary);font-size:.75rem">local</div>' : '' ?>
+      <div class="person-card-meta">
+        <div class="person-card-followers"><?= number_format($acct['followers_count'] ?? 0) ?></div>
+        <div class="person-card-followers-label">followers</div>
       </div>
     </a>
   <?php endforeach; ?>
@@ -100,37 +97,37 @@ $totalResults = count($accounts) + count($statuses) + count($hashtags);
 
 <!-- ── Posts ───────────────────────────────────────────────────────────── -->
 <?php if (($type === 'all' || $type === 'posts') && !empty($statuses)): ?>
-<section style="margin-bottom:1.5rem">
+<section class="search-section">
   <?php if ($type === 'all'): ?>
-    <h2 style="font-size:1rem;font-weight:600;margin:0 0 .6rem;color:var(--muted)">
-      Posts <span style="font-weight:400">(<?= count($statuses) ?>)</span>
+    <h2 class="search-section-label">
+      Posts <span class="search-section-count"><?= count($statuses) ?></span>
     </h2>
   <?php endif; ?>
 
-  <?php
-  // Render posts using the shared status helper
-  foreach ($statuses as $status):
+  <div class="search-post-list">
+  <?php foreach ($statuses as $status):
     $author  = $status['account'] ?? [];
     $isLocal = !str_contains($author['acct'] ?? '', '@');
-    $profUrl = $isLocal ? $baseUrl . '/@' . ($author['username'] ?? '') : ($author['url'] ?? '#');
-    $postUrl = $isLocal ? $baseUrl . '/statuses/' . $status['id'] : ($status['url'] ?? '#');
+    $profUrl = $isLocal
+      ? $baseUrl . '/@' . ($author['username'] ?? '')
+      : $baseUrl . '/@' . ($author['acct'] ?? '');
+    $postUrl = '/statuses/' . $status['id'];
   ?>
-    <div style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:.9rem 1rem;margin-bottom:.5rem">
-      <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.5rem">
+    <div class="search-post-card">
+      <div class="search-post-header">
         <a href="<?= htmlspecialchars($profUrl) ?>">
           <img src="<?= htmlspecialchars($author['avatar'] ?? $baseUrl . '/assets/img/default_avatar.svg') ?>"
-               alt="" class="avatar" style="width:36px;height:36px">
+               alt="" class="avatar search-post-avatar">
         </a>
-        <div style="min-width:0">
-          <a href="<?= htmlspecialchars($profUrl) ?>" style="font-weight:600;text-decoration:none;color:var(--text);font-size:.93rem">
+        <div class="search-post-author">
+          <a href="<?= htmlspecialchars($profUrl) ?>" class="search-post-name">
             <?= htmlspecialchars($author['display_name'] ?: ($author['username'] ?? '')) ?>
           </a>
-          <div style="font-size:.8rem;color:var(--muted)">
+          <div class="search-post-handle">
             @<?= htmlspecialchars($isLocal ? ($author['username'] ?? '') : ($author['acct'] ?? '')) ?>
           </div>
         </div>
-        <a href="<?= htmlspecialchars($postUrl) ?>"
-           style="margin-left:auto;font-size:.8rem;color:var(--muted);text-decoration:none;flex-shrink:0"
+        <a href="<?= htmlspecialchars($postUrl) ?>" class="search-post-date"
            title="<?= htmlspecialchars($status['created_at'] ?? '') ?>">
           <time datetime="<?= htmlspecialchars($status['created_at'] ?? '') ?>">
             <?= htmlspecialchars(substr($status['created_at'] ?? '', 0, 10)) ?>
@@ -138,29 +135,29 @@ $totalResults = count($accounts) + count($statuses) + count($hashtags);
         </a>
       </div>
       <?php if (!empty($status['spoiler_text'])): ?>
-        <div style="font-weight:600;margin-bottom:.3rem"><?= htmlspecialchars($status['spoiler_text']) ?></div>
+        <div class="search-post-cw"><?= htmlspecialchars($status['spoiler_text']) ?></div>
       <?php endif; ?>
-      <div style="font-size:.93rem;line-height:1.55;overflow-wrap:break-word">
+      <div class="search-post-content">
         <?= $status['content'] ?>
       </div>
     </div>
   <?php endforeach; ?>
+  </div>
 </section>
 <?php endif; ?>
 
 <!-- ── Hashtags ─────────────────────────────────────────────────────────── -->
 <?php if (($type === 'all' || $type === 'tags') && !empty($hashtags)): ?>
-<section style="margin-bottom:1.5rem">
+<section class="search-section">
   <?php if ($type === 'all'): ?>
-    <h2 style="font-size:1rem;font-weight:600;margin:0 0 .6rem;color:var(--muted)">
-      Hashtags <span style="font-weight:400">(<?= count($hashtags) ?>)</span>
+    <h2 class="search-section-label">
+      Hashtags <span class="search-section-count"><?= count($hashtags) ?></span>
     </h2>
   <?php endif; ?>
 
-  <div style="display:flex;flex-wrap:wrap;gap:.5rem">
+  <div class="hashtag-list">
     <?php foreach ($hashtags as $tag): ?>
-      <a href="<?= htmlspecialchars($tag['url']) ?>"
-         style="padding:.35rem .8rem;background:var(--surface);border-radius:999px;box-shadow:var(--shadow-sm);text-decoration:none;color:var(--text);font-size:.9rem">
+      <a href="<?= htmlspecialchars($tag['url']) ?>" class="hashtag-pill">
         #<?= htmlspecialchars($tag['name']) ?>
       </a>
     <?php endforeach; ?>
@@ -170,13 +167,13 @@ $totalResults = count($accounts) + count($statuses) + count($hashtags);
 
 <?php else: ?>
 <!-- No query yet — show hints -->
-<div style="color:var(--muted);padding:2rem 0;font-size:.95rem">
-  <p style="margin-bottom:.75rem">Search across posts, people, and hashtags.</p>
-  <ul style="margin:0;padding-left:1.25rem;line-height:2">
+<div class="search-hints">
+  <p style="margin-bottom:.75rem;color:var(--text-2)">Search across posts, people, and hashtags.</p>
+  <ul>
     <li>Type a keyword to search posts and people</li>
     <li>Use <code>@username@domain.social</code> to find a specific remote account</li>
     <li>Use <code>@domain.social</code> to browse all known users from an instance</li>
-    <li>Use <code>#hashtag</code> to find hashtags</li>
+    <li>Use <code>#hashtag</code> to find a hashtag</li>
   </ul>
 </div>
 <?php endif; ?>
