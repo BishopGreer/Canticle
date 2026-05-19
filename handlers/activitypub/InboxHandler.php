@@ -177,6 +177,24 @@ class InboxHandler
                 db()->query('UPDATE statuses SET favourites_count = GREATEST(0, favourites_count - 1) WHERE id = ?', [$status['id']]);
             }
         }
+
+        if ($type === 'Announce') {
+            // The object of the Undo is the Announce activity itself
+            $announceId = is_array($obj) ? ($obj['id'] ?? '') : (string) $obj;
+            if ($announceId) {
+                $boostRow = db()->fetch(
+                    'SELECT * FROM statuses WHERE uri = ? AND remote_actor_id = ? AND deleted_at IS NULL',
+                    [$announceId, $actor['id']]
+                );
+                if ($boostRow) {
+                    db()->update('statuses', ['deleted_at' => gmdate('Y-m-d H:i:s')], 'id = ?', [$boostRow['id']]);
+                    db()->query(
+                        'UPDATE statuses SET reblogs_count = GREATEST(0, reblogs_count - 1) WHERE id = ?',
+                        [$boostRow['reblog_of_id']]
+                    );
+                }
+            }
+        }
     }
 
     private function handleAccept(array $activity, array $actor): void
@@ -387,15 +405,47 @@ class InboxHandler
             if (!$original) return;
         }
 
-        // Increment boost count
-        db()->query(
-            'UPDATE statuses SET reblogs_count = reblogs_count + 1 WHERE id = ?',
-            [$original['id']]
-        );
+        // Store a boost status row so it appears in followers' home timelines
+        $boostUri = $activity['id'] ?? null;
+        if ($boostUri) {
+            $existingBoost = db()->fetch(
+                'SELECT id FROM statuses WHERE uri = ? AND deleted_at IS NULL',
+                [$boostUri]
+            );
+            if (!$existingBoost) {
+                $published   = $activity['published'] ?? null;
+                $boostedAt   = $published ? gmdate('Y-m-d H:i:s', strtotime($published)) : gmdate('Y-m-d H:i:s');
+                db()->insert('statuses', [
+                    'remote_actor_id' => $actor['id'],
+                    'uri'             => $boostUri,
+                    'url'             => $boostUri,
+                    'reblog_of_id'    => $original['id'],
+                    'content'         => '',
+                    'visibility'      => 'public',
+                    'language'        => $original['language'] ?? 'en',
+                    'created_at'      => $boostedAt,
+                ]);
 
-        // Notify local author if the original post is ours
-        if ($original['local_user_id']) {
-            Notification::create($original['local_user_id'], 'reblog', null, $actor['id'], $original['id']);
+                // Increment boost count only on the first delivery of this Announce
+                db()->query(
+                    'UPDATE statuses SET reblogs_count = reblogs_count + 1 WHERE id = ?',
+                    [$original['id']]
+                );
+
+                // Notify local author if the original post is ours
+                if ($original['local_user_id']) {
+                    Notification::create($original['local_user_id'], 'reblog', null, $actor['id'], $original['id']);
+                }
+            }
+        } else {
+            // No activity id — can't deduplicate; just increment count and notify
+            db()->query(
+                'UPDATE statuses SET reblogs_count = reblogs_count + 1 WHERE id = ?',
+                [$original['id']]
+            );
+            if ($original['local_user_id']) {
+                Notification::create($original['local_user_id'], 'reblog', null, $actor['id'], $original['id']);
+            }
         }
     }
 

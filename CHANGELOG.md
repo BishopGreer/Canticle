@@ -11,6 +11,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.2] — 2026-05-19
+
+### Fixed
+- **Boosts (Announce) were not federating** — boosting a post never sent an ActivityPub Announce activity to remote followers or to the original post's server
+- **Unboost was not federating** — removing a boost never sent an Undo Announce activity
+- **Duplicate boost on re-click** — missing `return` after idempotency check in `reblog()` caused a second boost row to be created silently on every re-click
+- **Incoming remote boosts not shown in timeline** — `handleAnnounce` only incremented the reblogs count but never created a boost status row, so followed accounts' boosts never appeared in the home feed
+- **Incoming Undo Announce not handled** — un-boosting from a remote server was silently ignored; now removes the boost row and decrements the count
+
+---
+
 ## [1.0.1] — 2026-05-19
 
 ### Fixed
@@ -140,5 +151,6 @@ v2.0.0   — major: breaking DB changes, removed APIs, architectural rewrites
 
 Tag every release: `git tag -a v1.0.1 -m "Fix: description"` then `git push origin v1.0.1`.
 
+[1.0.2]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.2
 [1.0.1]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.1
 [1.0.0]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.0

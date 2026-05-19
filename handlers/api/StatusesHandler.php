@@ -180,11 +180,13 @@ class StatusesHandler
         );
         if ($existing) {
             $res->json(Status::toMastodon(Status::find($existing['id']), $user));
+            return;
         }
 
-        $boostId = Status::create([
+        $boostUri = actorUrl($user['username']) . '/statuses/' . uniqid('', true);
+        $boostId  = Status::create([
             'local_user_id' => $user['id'],
-            'uri'           => actorUrl($user['username']) . '/statuses/' . uniqid('', true),
+            'uri'           => $boostUri,
             'url'           => BASE_URL . '/@' . $user['username'],
             'reblog_of_id'  => $status['id'],
             'content'       => '',
@@ -197,7 +199,12 @@ class StatusesHandler
             Notification::create($status['local_user_id'], 'reblog', $user['id'], null, $status['id']);
         }
 
-        $res->json(Status::toMastodon(Status::find($boostId), $user));
+        // Federate the Announce activity to followers (and original post's server)
+        $boostStatus = Status::find($boostId);
+        $fed = new Federator(new Queue(db()));
+        $fed->sendAnnounce($user, $boostStatus, $status);
+
+        $res->json(Status::toMastodon($boostStatus, $user));
     }
 
     /** POST /api/v1/statuses/:id/pin */
@@ -236,6 +243,10 @@ class StatusesHandler
             [$user['id'], $status['id']]
         );
         if ($boost) {
+            // Federate the Undo Announce before deleting the boost row
+            $fed = new Federator(new Queue(db()));
+            $fed->sendUndoAnnounce($user, $boost, $status);
+
             Status::delete($boost['id']);
             db()->query('UPDATE statuses SET reblogs_count = GREATEST(0, reblogs_count - 1) WHERE id = ?', [$status['id']]);
         }

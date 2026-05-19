@@ -87,6 +87,62 @@ class Federator
         $this->enqueue($activity, $actor['inbox_url'], $localUser);
     }
 
+    public function sendAnnounce(array $localUser, array $boostStatus, array $originalStatus): void
+    {
+        $actorUrl = actorUrl($localUser['username']);
+        $activity = [
+            '@context'  => 'https://www.w3.org/ns/activitystreams',
+            'id'        => $boostStatus['uri'] . '/activity',
+            'type'      => 'Announce',
+            'actor'     => $actorUrl,
+            'published' => date('c', strtotime($boostStatus['created_at'])),
+            'to'        => ['https://www.w3.org/ns/activitystreams#Public'],
+            'cc'        => [$actorUrl . '/followers'],
+            'object'    => $originalStatus['uri'],
+        ];
+
+        // Deliver to all remote followers
+        $this->deliverToFollowers($activity, $localUser);
+
+        // Also notify the original post's author if they are on a remote server
+        if ($originalStatus['remote_actor_id']) {
+            $actor = \Canticle\Models\RemoteActor::find($originalStatus['remote_actor_id']);
+            if ($actor) {
+                $inbox = $actor['shared_inbox_url'] ?: $actor['inbox_url'];
+                if ($inbox) $this->enqueue($activity, $inbox, $localUser);
+            }
+        }
+    }
+
+    public function sendUndoAnnounce(array $localUser, array $boostStatus, array $originalStatus): void
+    {
+        $actorUrl = actorUrl($localUser['username']);
+        $activity = [
+            '@context' => 'https://www.w3.org/ns/activitystreams',
+            'id'       => $boostStatus['uri'] . '#undo',
+            'type'     => 'Undo',
+            'actor'    => $actorUrl,
+            'object'   => [
+                'id'     => $boostStatus['uri'] . '/activity',
+                'type'   => 'Announce',
+                'actor'  => $actorUrl,
+                'object' => $originalStatus['uri'],
+            ],
+        ];
+
+        // Deliver to all remote followers
+        $this->deliverToFollowers($activity, $localUser);
+
+        // Also notify the original post's author if they are on a remote server
+        if ($originalStatus['remote_actor_id']) {
+            $actor = \Canticle\Models\RemoteActor::find($originalStatus['remote_actor_id']);
+            if ($actor) {
+                $inbox = $actor['shared_inbox_url'] ?: $actor['inbox_url'];
+                if ($inbox) $this->enqueue($activity, $inbox, $localUser);
+            }
+        }
+    }
+
     private function deliverToFollowers(array $activity, array $localUser): void
     {
         // Collect unique inboxes
