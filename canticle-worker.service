@@ -1,0 +1,18 @@
+[Unit]
+Description=Canticle Queue Worker
+After=network.target mariadb.service mysql.service
+Wants=mariadb.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/web/myocci.net/public_html/mastodon
+ExecStart=/usr/bin/php /var/web/myocci.net/public_html/mastodon/artisan.php worker
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/web/myocci.net/public_html/mastodon/storage/logs/worker.log
+StandardError=append:/var/web/myocci.net/public_html/mastodon/storage/logs/worker.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,219 @@
+# Deploying Canticle
+
+A lightweight, self-hosted ActivityPub server compatible with all Mastodon apps.
+
+---
+
+## Requirements
+
+| Component | Minimum |
+|-----------|---------|
+| PHP | 8.1+ with `pdo_mysql`, `openssl`, `curl`, `gd` extensions |
+| MariaDB | 10.4+ (or MySQL 8+) |
+| Web server | Apache2 with `mod_rewrite`, `mod_headers`, `mod_ssl` |
+| Shell access | For the queue worker |
+
+---
+
+## Fresh install
+
+### 1. Get the files
+
+```bash
+git clone https://github.com/your-org/canticle /var/web/myocci.net/public_html/mastodon
+cd /var/web/myocci.net/public_html/mastodon
+chmod -R 750 storage/
+chown -R www-data:www-data /var/web/myocci.net/public_html/mastodon
+```
+
+### 2. Create the database
+
+```sql
+CREATE DATABASE canticle CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'canticle'@'localhost' IDENTIFIED BY 'strongpassword';
+GRANT ALL PRIVILEGES ON canticle.* TO 'canticle'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+### 3. Enable required Apache2 modules
+
+```bash
+sudo a2enmod rewrite headers ssl proxy_fcgi setenvif
+sudo a2enconf php8.2-fpm    # adjust to your PHP version
+```
+
+### 4. Configure Apache2
+
+```bash
+sudo cp /var/web/myocci.net/public_html/mastodon/apache2.conf.example /etc/apache2/sites-available/canticle.conf
+sudo nano /etc/apache2/sites-available/canticle.conf   # set your domain name
+sudo a2ensite canticle
+sudo systemctl reload apache2
+```
+
+### 5. Get a TLS certificate
+
+```bash
+sudo certbot --apache -d social.example.com
+```
+
+Certbot will automatically update `canticle.conf` with the correct certificate paths and reload Apache.
+
+### 6. Run the web installer
+
+Open `https://social.example.com/install.php` in your browser and follow the steps.
+
+**After installation, delete install.php — it must not stay accessible:**
+```bash
+rm /var/web/myocci.net/public_html/mastodon/install.php
+```
+
+### 7. Set up the queue worker (cron)
+
+Add to crontab (`crontab -e` as `www-data` or your web user):
+```
+* * * * * php /var/web/myocci.net/public_html/mastodon/artisan.php worker --once >> /var/web/myocci.net/public_html/mastodon/storage/logs/worker.log 2>&1
+```
+
+Or run it as a persistent daemon with systemd:
+
+```ini
+# /etc/systemd/system/canticle-worker.service
+[Unit]
+Description=Canticle Queue Worker
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/var/web/myocci.net/public_html/mastodon
+ExecStart=/usr/bin/php /var/web/myocci.net/public_html/mastodon/artisan.php worker
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now canticle-worker
+```
+
+---
+
+## Connecting apps
+
+Canticle implements the full Mastodon API v1/v2, so any Mastodon-compatible app works out of the box:
+
+| Platform | Apps |
+|----------|------|
+| iOS | Ivory, Toot!, Mona, Ice Cubes |
+| macOS | Ivory, Mona |
+| Android | Tusky, Megalodon |
+| Windows | Whalebird |
+| Linux | Whalebird, Tuba |
+| Web | Elk, Pinafore, Phanpy |
+
+When signing in, enter your instance domain (e.g. `social.example.com`).
+
+---
+
+## Updating
+
+```bash
+cd /var/web/myocci.net/public_html/mastodon
+git pull origin main
+php artisan.php migrate
+```
+
+Or use the web updater: `https://social.example.com/update.php` (requires admin login).
+
+---
+
+## Federation (ActivityPub)
+
+Canticle federates with Mastodon, Pleroma, Misskey, Pixelfed, and any other
+ActivityPub-compatible software. Federation happens automatically when users
+follow or mention remote accounts.
+
+### Defederate an instance
+
+1. Admin panel → Federation → enter the domain → **Block**
+2. Blocked instances can no longer deliver to your inbox. Existing posts remain.
+
+### Silence an instance
+
+Silenced instances' posts won't appear in the public timeline, but federated
+follows still work normally.
+
+---
+
+## AI Alt Text
+
+Configure in Admin → Settings → AI Alt Text:
+
+| Provider | What to enter |
+|----------|---------------|
+| Claude (Anthropic) | API key from console.anthropic.com. Default model: `claude-haiku-4-5-20251001` |
+| OpenAI | API key. Default model: `gpt-4o-mini` |
+| Ollama (local) | Endpoint e.g. `http://localhost:11434`. Default model: `llava` |
+
+Alt text is generated automatically when images are uploaded and can always be
+edited manually before posting.
+
+---
+
+## Configuring limits
+
+All limits can be changed without restarting. Admin → Settings:
+
+- **Max characters** — e.g. raise to 2000 for long-form posts
+- **Max poll options** — e.g. raise to 10 for richer polls
+- **Max media attachments** — default 4
+- **Max upload size** — default 40 MB
+
+Apps that respect the `/api/v2/instance` endpoint pick up the new limits
+automatically — no app reconfiguration needed.
+
+---
+
+## Directory structure
+
+```
+canticle/
+├── index.php            Front controller (all web requests)
+├── bootstrap.php        Autoloader + DB + config
+├── artisan.php          CLI: queue worker, migrations
+├── install.php          Web installer (delete after use)
+├── update.php           Web/CLI updater
+├── config.php           Your config (generated by installer)
+├── config.example.php   Config reference
+├── apache2.conf.example Apache2 VirtualHost config
+├── .htaccess            URL rewriting + security rules
+├── core/                Router, DB, Auth, HTTP Signatures…
+├── models/              User, Status, Follow, Media…
+├── handlers/
+│   ├── activitypub/     WebFinger, NodeInfo, Actor, Inbox
+│   ├── api/             Mastodon API handlers
+│   ├── web/             Web UI handlers
+│   └── admin/           Admin panel
+├── services/            AltTextService
+├── templates/
+│   ├── web/             Timeline, profile, auth pages
+│   └── admin/           Admin UI
+├── migrations/          SQL migration files
+└── storage/
+    ├── media/           Uploaded files
+    ├── cache/           File cache
+    └── logs/            Worker logs
+```
+
+---
+
+## Security notes
+
+- Delete `install.php` immediately after installation
+- `app_env = production` is set automatically by the installer
+- HTTPS is required — ActivityPub federation will not work over plain HTTP
+- The `storage/` directory is blocked by `.htaccess` and the Apache vhost config
+- Run PHP-FPM as `www-data` (or equivalent low-privilege user)
+- Back up your MariaDB database regularly

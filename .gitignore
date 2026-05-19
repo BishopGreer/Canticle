@@ -1,0 +1,48 @@
+# ── Canticle .gitignore ────────────────────────────────────────────────────────
+
+# Instance configuration — contains DB credentials and secrets; never commit
+config.php
+
+# User-uploaded media (can be large; back up separately)
+storage/media/avatars/*
+storage/media/headers/*
+storage/media/attachments/*
+
+# Log files
+storage/logs/*.log
+storage/logs/*.log.*
+
+# File cache
+storage/cache/*
+
+# Keep the storage directory structure in git
+!storage/media/avatars/.gitkeep
+!storage/media/headers/.gitkeep
+!storage/media/attachments/.gitkeep
+!storage/logs/.gitkeep
+!storage/cache/.gitkeep
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.phpunit.result.cache
+
+# Composer (we don't use it, but be safe)
+vendor/
+composer.lock
+
+# Node (we don't use it either)
+node_modules/
+package-lock.json
+
+# PHP error logs that might land in the project root
+error_log
+php_errorlog

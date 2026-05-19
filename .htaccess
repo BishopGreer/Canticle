@@ -1,0 +1,63 @@
+# Canticle — Apache2 .htaccess
+# Requires: mod_rewrite, mod_headers
+# See apache2.conf.example for the full VirtualHost config.
+
+# Prevent Apache from auto-appending a trailing slash to directory-like paths
+# (e.g. /public → /public/). Without this, mod_dir intercepts before mod_rewrite.
+DirectorySlash Off
+
+# ── URL rewriting ──────────────────────────────────────────────────────────────
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Block sensitive files and directories
+    RewriteRule ^config\.php$       - [F,L]
+    RewriteRule ^storage/           - [F,L]
+    RewriteRule ^migrations/        - [F,L]
+    RewriteRule ^artisan\.php$      - [F,L]
+
+    # Route .well-known/ through the PHP front controller so WebFinger, NodeInfo,
+    # etc. are publicly accessible.  This MUST come before the dot-file block.
+    RewriteRule ^\.well-known/      index.php [L]
+
+    # Block all other dotfiles/directories (.htaccess, .env, .git, etc.)
+    RewriteRule ^\.                 - [F,L]
+
+    # Let real files pass through (but NOT directories — /public is a route, not a dir)
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^ - [L]
+
+    # Prevent Apache from doing an automatic redirect to /public/ when the
+    # public/ directory exists — we want the PHP router to handle /public.
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteCond %{REQUEST_URI} !^/assets/
+    RewriteRule ^ index.php [L]
+
+    # Route everything else through the front controller
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# ── Security headers ───────────────────────────────────────────────────────────
+<IfModule mod_headers.c>
+    Header always set X-Frame-Options "DENY"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Long-lived cache for hashed static assets
+    <FilesMatch "\.(css|js|woff2?|png|jpg|gif|svg|ico)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+</IfModule>
+
+# ── PHP settings (mod_php; ignored if using PHP-FPM) ──────────────────────────
+<IfModule mod_php.c>
+    php_value upload_max_filesize 64M
+    php_value post_max_size       64M
+    php_value memory_limit        256M
+    php_value max_execution_time  60
+</IfModule>
+
+# Disable directory listings
+Options -Indexes

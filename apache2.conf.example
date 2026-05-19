@@ -1,0 +1,70 @@
+# Canticle — Apache2 Virtual Host
+# Copy to /etc/apache2/sites-available/canticle.conf
+# Then: sudo a2ensite canticle && sudo systemctl reload apache2
+#
+# Required modules:
+#   sudo a2enmod rewrite headers ssl proxy_fcgi setenvif
+#   sudo a2enconf php8.2-fpm   (adjust version to match your PHP)
+
+# ── HTTP → HTTPS redirect ──────────────────────────────────────────────────────
+<VirtualHost *:80>
+    ServerName social.example.com
+    Redirect permanent / https://social.example.com/
+</VirtualHost>
+
+# ── HTTPS ─────────────────────────────────────────────────────────────────────
+<VirtualHost *:443>
+    ServerName social.example.com
+    DocumentRoot /var/www/canticle
+
+    # ── TLS (certbot fills these in automatically) ─────────────────────────
+    SSLEngine on
+    SSLCertificateFile    /etc/letsencrypt/live/social.example.com/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/social.example.com/privkey.pem
+    SSLProtocol           all -SSLv3 -TLSv1 -TLSv1.1
+    SSLCipherSuite        ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384
+    SSLHonorCipherOrder   off
+    SSLSessionTickets     off
+
+    # ── PHP via PHP-FPM ────────────────────────────────────────────────────
+    # Adjust the socket path to match your PHP version
+    <FilesMatch "\.php$">
+        SetHandler "proxy:unix:/run/php/php8.2-fpm.sock|fcgi://localhost"
+    </FilesMatch>
+
+    # ── Upload size ────────────────────────────────────────────────────────
+    LimitRequestBody 67108864
+
+    # ── Security headers ───────────────────────────────────────────────────
+    Header always set X-Frame-Options "DENY"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; img-src * data:; media-src *; frame-ancestors 'none'"
+
+    # ── Document root settings ─────────────────────────────────────────────
+    # AllowOverride All lets the .htaccess handle URL rewriting
+    <Directory /var/www/canticle>
+        Options -Indexes -MultiViews +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    # ── Block direct access to sensitive directories ────────────────────────
+    <DirectoryMatch "^/var/www/canticle/(storage|migrations)/">
+        Require all denied
+    </DirectoryMatch>
+
+    <Files "config.php">
+        Require all denied
+    </Files>
+
+    # ── Long-lived cache for static assets ────────────────────────────────
+    <Directory /var/www/canticle/public/assets>
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </Directory>
+
+    # ── Logging ────────────────────────────────────────────────────────────
+    ErrorLog  ${APACHE_LOG_DIR}/canticle_error.log
+    CustomLog ${APACHE_LOG_DIR}/canticle_access.log combined
+</VirtualHost>
