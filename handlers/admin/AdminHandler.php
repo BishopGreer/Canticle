@@ -612,7 +612,6 @@ class AdminHandler
             'admin'         => $admin,
             'title'         => 'Upgrades',
             'migrations'    => $this->getMigrationStatus(),
-            'sysInfo'       => $this->getSystemInfo(),
             'gitInfo'       => $this->getGitInfo(),
             'flash_success' => Session::flash('success'),
             'flash_error'   => Session::flash('error'),
@@ -696,8 +695,32 @@ class AdminHandler
             $res->redirect('/admin/upgrades');
         }
 
-        $log = "▶ Running git pull …\n";
-        $log .= $this->runCommand([$git, '-C', CANTICLE_ROOT, 'pull', '--ff-only']);
+        $g = [$git, '-c', 'safe.directory=' . CANTICLE_ROOT, '-C', CANTICLE_ROOT];
+
+        // Detect the remote's actual default branch (may be 'main' or 'master')
+        // regardless of what the local branch is named.
+        $remoteBranch = null;
+        $remoteBranches = $this->runCommand([...$g, 'branch', '-r']);
+        foreach (['main', 'master'] as $candidate) {
+            if (str_contains($remoteBranches, 'origin/' . $candidate)) {
+                $remoteBranch = $candidate;
+                break;
+            }
+        }
+        if (!$remoteBranch) {
+            // Fall back: ask git what origin's HEAD points to
+            $symref = trim($this->runCommand([...$g, 'ls-remote', '--symref', 'origin', 'HEAD']));
+            if (preg_match('#refs/heads/(\S+)#', $symref, $m)) {
+                $remoteBranch = $m[1];
+            }
+        }
+        $remoteBranch = $remoteBranch ?: 'main';
+
+        // Set upstream tracking so future pulls work without specifying remote/branch
+        $this->runCommand([...$g, 'branch', '--set-upstream-to=origin/' . $remoteBranch]);
+
+        $log = "▶ Running git pull origin {$remoteBranch} …\n";
+        $log .= $this->runCommand([...$g, 'pull', '--ff-only', 'origin', $remoteBranch]);
 
         // Auto-run any newly available migrations
         $pending = array_filter($this->getMigrationStatus(), fn($m) => !$m['applied']);
@@ -737,22 +760,173 @@ class AdminHandler
         $res->redirect('/admin/upgrades');
     }
 
-    /** POST /admin/upgrades/opcache-flush */
+    /** POST /admin/upgrades/opcache-flush — legacy redirect, kept for bookmarks */
     public function flushOpcache(Request $req, Response $res): void
     {
         $this->requireAdmin($req, $res);
         Session::start();
         if (!Session::verifyCsrf($req->input('_csrf', ''))) {
             Session::flash('error', 'Invalid CSRF token.');
-            $res->redirect('/admin/upgrades');
+            $res->redirect('/admin/server-status');
         }
-
         if (function_exists('opcache_reset') && opcache_reset()) {
-            Session::flash('success', 'OPcache cleared — PHP will recompile files on next request.');
+            Session::flash('success', 'OPcache cleared.');
         } else {
             Session::flash('error', 'OPcache flush failed or OPcache is not enabled.');
         }
-        $res->redirect('/admin/upgrades');
+        $res->redirect('/admin/server-status');
+    }
+
+    // ── Server Status ─────────────────────────────────────────────────────────
+
+    /** GET /admin/server-status */
+    public function serverStatus(Request $req, Response $res): void
+    {
+        $admin = $this->requireAdmin($req, $res);
+        Session::start();
+        $res->html($this->render('admin/server_status', [
+            'admin'         => $admin,
+            'title'         => 'Server Status',
+            'sysInfo'       => $this->getSystemInfo(),
+            'cacheInfo'     => $this->getServerCacheInfo(),
+            'flash_success' => Session::flash('success'),
+            'flash_error'   => Session::flash('error'),
+        ]));
+    }
+
+    /** POST /admin/server-status/flush */
+    public function flushServerCache(Request $req, Response $res): void
+    {
+        $this->requireAdmin($req, $res);
+        Session::start();
+        if (!Session::verifyCsrf($req->input('_csrf', ''))) {
+            Session::flash('error', 'Invalid CSRF token.');
+            $res->redirect('/admin/server-status');
+        }
+
+        $type    = $req->input('cache_type', 'all');
+        $flushed = [];
+        $failed  = [];
+
+        if (in_array($type, ['opcache', 'all'])) {
+            if (function_exists('opcache_reset') && @opcache_reset()) {
+                $flushed[] = 'OPcache';
+            } elseif (function_exists('opcache_reset')) {
+                $failed[] = 'OPcache (reset failed — may need PHP-FPM reload)';
+            }
+        }
+
+        if (in_array($type, ['apcu', 'all'])) {
+            if (function_exists('apcu_clear_cache') && @apcu_clear_cache()) {
+                $flushed[] = 'APCu';
+            } elseif (function_exists('apcu_clear_cache')) {
+                $failed[] = 'APCu (clear failed)';
+            }
+        }
+
+        if (in_array($type, ['realpath', 'all'])) {
+            clearstatcache(true);
+            $flushed[] = 'Realpath cache';
+        }
+
+        $msg = '';
+        if ($flushed) $msg .= 'Flushed: ' . implode(', ', $flushed) . '. ';
+        if ($failed)  $msg .= 'Failed: ' . implode(', ', $failed) . '.';
+
+        if ($failed && !$flushed) {
+            Session::flash('error', trim($msg));
+        } else {
+            Session::flash('success', trim($msg) ?: 'Cache flush complete.');
+        }
+
+        $res->redirect('/admin/server-status');
+    }
+
+    /** Gather all PHP/server cache layer information for the status page. */
+    private function getServerCacheInfo(): array
+    {
+        // ── OPcache ───────────────────────────────────────────────
+        $ocStatus = function_exists('opcache_get_status') ? (@opcache_get_status() ?: false) : false;
+        $ocMem    = $ocStatus ? ($ocStatus['memory_usage'] ?? []) : [];
+        $ocUsed   = (int) ($ocMem['used_memory']  ?? 0);
+        $ocFree   = (int) ($ocMem['free_memory']  ?? 0);
+        $ocWasted = (int) ($ocMem['wasted_memory'] ?? 0);
+        $ocTotal  = $ocUsed + $ocFree + $ocWasted;
+
+        $opcache = [
+            'available' => function_exists('opcache_get_status'),
+            'enabled'   => (bool) ($ocStatus['opcache_enabled'] ?? false),
+            'scripts'   => (int) ($ocStatus['opcache_statistics']['num_cached_scripts'] ?? 0),
+            'hits'      => (int) ($ocStatus['opcache_statistics']['hits'] ?? 0),
+            'misses'    => (int) ($ocStatus['opcache_statistics']['misses'] ?? 0),
+            'used'      => $ocUsed,
+            'total'     => $ocTotal,
+            'pct'       => $ocTotal > 0 ? round($ocUsed / $ocTotal * 100) : 0,
+            'max_files' => ini_get('opcache.max_accelerated_files'),
+            'ttl'       => ini_get('opcache.revalidate_freq'),
+            'validate'  => (bool) ini_get('opcache.validate_timestamps'),
+        ];
+
+        // ── APCu ─────────────────────────────────────────────────
+        $apcuRaw  = [];
+        if (function_exists('apcu_cache_info')) {
+            try { $apcuRaw = @apcu_cache_info() ?: []; } catch (\Throwable) {}
+        }
+        $apcuMem = function_exists('apcu_sma_info') ? (@apcu_sma_info() ?: []) : [];
+        $apcu = [
+            'available' => function_exists('apcu_cache_info'),
+            'enabled'   => !empty($apcuRaw),
+            'entries'   => (int) ($apcuRaw['num_entries'] ?? 0),
+            'hits'      => (int) ($apcuRaw['num_hits']    ?? 0),
+            'misses'    => (int) ($apcuRaw['num_misses']  ?? 0),
+            'mem_avail' => (int) ($apcuMem['avail_mem']   ?? 0),
+            'mem_size'  => (int) ($apcuMem['seg_size']    ?? 0),
+        ];
+
+        // ── PHP Realpath cache ────────────────────────────────────
+        $rpEntries = function_exists('realpath_cache_get') ? count(@realpath_cache_get() ?: []) : 0;
+        $rpSize    = function_exists('realpath_cache_size') ? (int) @realpath_cache_size() : 0;
+        $realpath  = [
+            'available' => function_exists('realpath_cache_size'),
+            'size'      => $rpSize,
+            'entries'   => $rpEntries,
+            'ttl'       => (int) ini_get('realpath_cache_ttl'),
+            'max_size'  => ini_get('realpath_cache_size'),
+        ];
+
+        // ── SAPI / PHP-FPM ───────────────────────────────────────
+        $sapi   = php_sapi_name();
+        $isFpm  = $sapi === 'fpm-fcgi';
+        // FPM pool isolation: opcache_reset() only resets the worker handling this request.
+        // Other workers in the pool continue serving cached bytecode until TTL or reload.
+        $fpmWarning = $isFpm && ($opcache['enabled'] ?? false) && !($opcache['validate'] ?? false);
+
+        // ── Web server ────────────────────────────────────────────
+        $serverSw   = $_SERVER['SERVER_SOFTWARE'] ?? '';
+        $swLower    = strtolower($serverSw);
+        $isApache   = str_contains($swLower, 'apache');
+        $isNginx    = str_contains($swLower, 'nginx');
+        $isLs       = str_contains($swLower, 'litespeed') || str_contains($swLower, 'lsws');
+        $apacheMods = ($isApache && function_exists('apache_get_modules')) ? apache_get_modules() : [];
+
+        $webserver = [
+            'software'     => $serverSw ?: 'Unknown',
+            'is_apache'    => $isApache,
+            'is_nginx'     => $isNginx,
+            'is_litespeed' => $isLs,
+            'mod_cache'    => in_array('mod_cache',    $apacheMods),
+            'mod_expires'  => in_array('mod_expires',  $apacheMods),
+            'mod_deflate'  => in_array('mod_deflate',  $apacheMods),
+        ];
+
+        // ── Session cache ─────────────────────────────────────────
+        $session = [
+            'handler'  => ini_get('session.save_handler'),
+            'lifetime' => (int) ini_get('session.gc_maxlifetime'),
+            'path'     => ini_get('session.save_path'),
+        ];
+
+        return compact('opcache', 'apcu', 'realpath', 'sapi', 'isFpm', 'fpmWarning', 'webserver', 'session');
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -819,22 +993,42 @@ class AdminHandler
 
     private function getGitInfo(): array
     {
-        $git = $this->findGit();
-        if (!$git || !is_dir(CANTICLE_ROOT . '/.git')) {
-            return ['available' => false];
+        $git    = $this->findGit();
+        $hasDir = is_dir(CANTICLE_ROOT . '/.git');
+
+        if (!$git && !$hasDir) {
+            return ['available' => false, 'reason' => 'no_git_no_repo'];
+        }
+        if (!$git) {
+            return ['available' => false, 'reason' => 'no_git'];
+        }
+        if (!$hasDir) {
+            return ['available' => false, 'reason' => 'no_repo', 'git_path' => $git];
         }
 
-        $branch  = trim($this->runCommand([$git, '-C', CANTICLE_ROOT, 'rev-parse', '--abbrev-ref', 'HEAD']));
-        $commit  = trim($this->runCommand([$git, '-C', CANTICLE_ROOT, 'log', '-1', '--format=%h %s']));
-        $date    = trim($this->runCommand([$git, '-C', CANTICLE_ROOT, 'log', '-1', '--format=%ci']));
-        $dirty   = trim($this->runCommand([$git, '-C', CANTICLE_ROOT, 'status', '--porcelain'])) !== '';
-        $remote  = trim($this->runCommand([$git, '-C', CANTICLE_ROOT, 'remote', 'get-url', 'origin']));
+        // -c safe.directory bypasses the "dubious ownership" error that occurs when
+        // the directory owner differs from the PHP-FPM user (www-data).
+        $g = [$git, '-c', 'safe.directory=' . CANTICLE_ROOT, '-C', CANTICLE_ROOT];
+
+        $branch  = trim($this->runCommand([...$g, 'rev-parse', '--abbrev-ref', 'HEAD']));
+        $commit  = trim($this->runCommand([...$g, 'log', '-1', '--format=%h %s']));
+        $date    = trim($this->runCommand([...$g, 'log', '-1', '--format=%ci']));
+        $remote  = trim($this->runCommand([...$g, 'remote', 'get-url', 'origin']));
+
+        // Ignore expected local-only files (config, storage, logs) when checking dirty state.
+        // These will always differ from the repo on a live server and are not relevant to updates.
+        $statusLines = array_filter(
+            explode("\n", trim($this->runCommand([...$g, 'status', '--porcelain']))),
+            fn($line) => $line !== '' &&
+                         !preg_match('#^\s*.\s+(config\.php|storage/|\.env)#', $line)
+        );
+        $dirty = !empty($statusLines);
 
         // Check if remote has new commits
-        $this->runCommand([$git, '-C', CANTICLE_ROOT, 'fetch', '--quiet']);
-        $behind  = trim($this->runCommand([$git, '-C', CANTICLE_ROOT, 'rev-list', '--count', 'HEAD..@{u}']));
+        $this->runCommand([...$g, 'fetch', '--quiet']);
+        $behind  = trim($this->runCommand([...$g, 'rev-list', '--count', 'HEAD..@{u}']));
 
-        return [
+        $info = [
             'available' => true,
             'branch'    => $branch ?: 'unknown',
             'commit'    => $commit ?: 'unknown',
@@ -843,6 +1037,62 @@ class AdminHandler
             'remote'    => $remote ?: '',
             'behind'    => is_numeric($behind) ? (int)$behind : 0,
         ];
+
+        // Cache result so the admin layout can show update badges without re-fetching
+        $this->writeUpdateCache($info);
+
+        return $info;
+    }
+
+    // ── Update check cache ────────────────────────────────────────────────────
+
+    /** POST /admin/upgrades/check-updates */
+    public function checkUpdates(Request $req, Response $res): void
+    {
+        $this->requireAdmin($req, $res);
+        Session::start();
+        if (!Session::verifyCsrf($req->input('_csrf', ''))) {
+            Session::flash('error', 'Invalid CSRF token.');
+            $res->redirect('/admin/upgrades');
+        }
+
+        $info = $this->getGitInfo();   // fetches from remote and writes cache
+
+        if (!$info['available']) {
+            Session::flash('error', 'Git is not available on this server.');
+        } elseif ($info['behind'] > 0) {
+            Session::flash('success', $info['behind'] . ' update' . ($info['behind'] !== 1 ? 's' : '') . ' available.');
+        } else {
+            Session::flash('success', 'Already up to date.');
+        }
+
+        $res->redirect('/admin/upgrades');
+    }
+
+    /** Read the cached update check result. Returns null if no cache or cache is stale. */
+    public static function readUpdateCache(): ?array
+    {
+        $file = CANTICLE_ROOT . '/storage/cache/git_update_check.json';
+        if (!file_exists($file)) return null;
+        $data = @json_decode((string) file_get_contents($file), true);
+        if (!is_array($data) || empty($data['checked_at'])) return null;
+        return $data;
+    }
+
+    private function writeUpdateCache(array $info): void
+    {
+        $dir = CANTICLE_ROOT . '/storage/cache';
+        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+        $payload = [
+            'checked_at'    => time(),
+            'git_available' => $info['available'],
+            'behind'        => $info['behind'] ?? 0,
+            'branch'        => $info['branch'] ?? '',
+            'commit'        => $info['commit'] ?? '',
+            'date'          => $info['date']   ?? '',
+            'remote'        => $info['remote'] ?? '',
+        ];
+        @file_put_contents($dir . '/git_update_check.json', json_encode($payload));
     }
 
     private function findGit(): ?string

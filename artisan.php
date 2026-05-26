@@ -20,6 +20,7 @@ match ($command) {
     'prune'           => runPrune($argv),
     'check:actor'     => runCheckActor($argv),
     'regenerate:keys' => runRegenerateKeys($argv),
+    'check-updates'   => runCheckUpdates(),
     'help'            => printHelp(),
     default           => printHelp(),
 };
@@ -333,6 +334,70 @@ function runRegenerateKeys(array $argv): void
     echo "     to confirm the new keypair is valid and the actor endpoint serves it.\n";
 }
 
+function runCheckUpdates(): void
+{
+    $git = null;
+    foreach (['/usr/bin/git', '/usr/local/bin/git', '/opt/homebrew/bin/git'] as $path) {
+        if (is_executable($path)) { $git = $path; break; }
+    }
+    if (!$git) {
+        $which = trim((string) @shell_exec('which git 2>/dev/null'));
+        if ($which && is_executable($which)) $git = $which;
+    }
+
+    if (!$git || !is_dir(CANTICLE_ROOT . '/.git')) {
+        echo "[check-updates] git not available or no .git directory — skipping.\n";
+        return;
+    }
+
+    // -c safe.directory bypasses ownership mismatch errors (e.g. files owned by
+    // a different user than the one running this command).
+    $g = [$git, '-c', 'safe.directory=' . CANTICLE_ROOT, '-C', CANTICLE_ROOT];
+
+    echo "[check-updates] Fetching from remote…\n";
+    runCmd([...$g, 'fetch', '--quiet']);
+
+    $behind = trim(runCmd([...$g, 'rev-list', '--count', 'HEAD..@{u}']));
+    $commit = trim(runCmd([...$g, 'log', '-1', '--format=%h %s']));
+    $branch = trim(runCmd([...$g, 'rev-parse', '--abbrev-ref', 'HEAD']));
+    $remote = trim(runCmd([...$g, 'remote', 'get-url', 'origin']));
+    $date   = trim(runCmd([...$g, 'log', '-1', '--format=%ci']));
+
+    $behind = is_numeric($behind) ? (int)$behind : 0;
+
+    $payload = [
+        'checked_at'    => time(),
+        'git_available' => true,
+        'behind'        => $behind,
+        'branch'        => $branch ?: 'unknown',
+        'commit'        => $commit ?: 'unknown',
+        'date'          => $date ? substr($date, 0, 10) : '—',
+        'remote'        => $remote ?: '',
+    ];
+
+    $dir  = CANTICLE_ROOT . '/storage/cache';
+    if (!is_dir($dir)) mkdir($dir, 0755, true);
+    file_put_contents($dir . '/git_update_check.json', json_encode($payload));
+
+    if ($behind > 0) {
+        echo "[check-updates] {$behind} update(s) available. Latest commit: {$commit}\n";
+    } else {
+        echo "[check-updates] Already up to date (branch: {$branch}).\n";
+    }
+}
+
+function runCmd(array $cmd): string
+{
+    $proc = @proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, CANTICLE_ROOT);
+    if (!is_resource($proc)) return '';
+    $out  = stream_get_contents($pipes[1]);
+    $out .= stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($proc);
+    return (string) $out;
+}
+
 function printHelp(): void
 {
     echo <<<HELP
@@ -347,6 +412,7 @@ Commands:
   prune --actor-days=N      Override actor retention  (0 = keep forever)
   check:actor [username]    Verify actor keypair and public endpoint (debug 401s)
   regenerate:keys <user>    Generate a fresh RSA keypair for a user (fixes key mismatches)
+  check-updates             Check git remote for new commits and cache the result
 
 Cron setup (add to crontab):
   # Queue worker — every minute
@@ -354,6 +420,9 @@ Cron setup (add to crontab):
 
   # Content pruner — once daily at 3 AM
   0 3 * * * php /path/to/canticle/artisan.php prune >> /path/to/canticle/storage/logs/prune.log 2>&1
+
+  # Update checker — once daily at 6 AM
+  0 6 * * * php /path/to/canticle/artisan.php check-updates >> /path/to/canticle/storage/logs/worker.log 2>&1
 
 Retention is configured in Admin → Settings → Content Retention,
 or with the --status-days / --actor-days flags above.

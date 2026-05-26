@@ -185,10 +185,13 @@ $router->post('/admin/relays/:id/remove',     [AdminHandler::class, 'removeRelay
 $router->get('/admin/prune',                     [AdminHandler::class, 'pruneForm']);
 $router->post('/admin/prune/settings',           [AdminHandler::class, 'pruneSettings']);
 $router->post('/admin/prune/run',                [AdminHandler::class, 'pruneRun']);
-$router->get('/admin/upgrades',                  [AdminHandler::class, 'upgrades']);
-$router->post('/admin/upgrades/migrate',         [AdminHandler::class, 'runMigrations']);
-$router->post('/admin/upgrades/pull',            [AdminHandler::class, 'runGitPull']);
-$router->post('/admin/upgrades/opcache-flush',   [AdminHandler::class, 'flushOpcache']);
+$router->get('/admin/upgrades',                   [AdminHandler::class, 'upgrades']);
+$router->post('/admin/upgrades/migrate',          [AdminHandler::class, 'runMigrations']);
+$router->post('/admin/upgrades/pull',             [AdminHandler::class, 'runGitPull']);
+$router->post('/admin/upgrades/opcache-flush',    [AdminHandler::class, 'flushOpcache']);
+$router->post('/admin/upgrades/check-updates',    [AdminHandler::class, 'checkUpdates']);
+$router->get('/admin/server-status',             [AdminHandler::class, 'serverStatus']);
+$router->post('/admin/server-status/flush',      [AdminHandler::class, 'flushServerCache']);
 
 // ── Web UI ────────────────────────────────────────────────────────────────────
 $router->get('/',                [WebHandler::class, 'home']);

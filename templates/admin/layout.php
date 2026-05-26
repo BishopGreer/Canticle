@@ -1,7 +1,11 @@
 <?php
 // Admin layout — $content is injected by AdminHandler::render()
 // $title, $admin are available from the calling handler.
-$currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+$currentPath  = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+$updateCache  = \Canticle\Handlers\Admin\AdminHandler::readUpdateCache();
+$updateBehind = (int) ($updateCache['behind'] ?? 0);
+$updateAge    = $updateCache ? (time() - (int)$updateCache['checked_at']) : null;
+
 function adminNavActive(string $path, string $current): string {
     return $current === $path || str_starts_with($current, $path . '/') ? ' active' : '';
 }
@@ -51,7 +55,12 @@ function adminNavActive(string $path, string $current): string {
       🧹 Retention
     </a>
     <a href="/admin/upgrades"<?= str_contains($currentPath, '/admin/upgrades') ? ' class="active"' : '' ?>>
-      🔄 Upgrades
+      🔄 Upgrades<?php if ($updateBehind > 0): ?>
+        <span style="margin-left:auto;background:var(--accent);color:#fff;font-size:.7rem;font-weight:700;padding:.1rem .45rem;border-radius:999px;line-height:1.4"><?= $updateBehind ?></span>
+      <?php endif; ?>
+    </a>
+    <a href="/admin/server-status"<?= str_contains($currentPath, '/admin/server-status') ? ' class="active"' : '' ?>>
+      🖥 Server Status
     </a>
 
     <hr>
@@ -59,6 +68,20 @@ function adminNavActive(string $path, string $current): string {
   </nav>
 
   <main class="admin-main">
+
+    <?php if ($updateBehind > 0 && !str_contains($currentPath, '/admin/upgrades')): ?>
+    <div style="display:flex;align-items:center;gap:.85rem;background:var(--accent-light,#eff6ff);border:1px solid var(--accent);border-radius:var(--radius-sm);padding:.75rem 1rem;margin-bottom:1.25rem;font-size:.92rem">
+      <span style="font-size:1.2rem">🔄</span>
+      <span>
+        <strong><?= $updateBehind ?> update<?= $updateBehind !== 1 ? 's' : '' ?> available</strong>
+        <?php if ($updateCache['commit'] ?? ''): ?>
+          — latest: <code><?= htmlspecialchars($updateCache['commit']) ?></code>
+        <?php endif; ?>
+      </span>
+      <a href="/admin/upgrades" class="btn btn-sm" style="margin-left:auto;white-space:nowrap">View &amp; Update →</a>
+    </div>
+    <?php endif; ?>
+
     <?php if (!empty($flash_success)): ?>
       <div class="flash-success" style="margin-bottom:1.25rem"><?= htmlspecialchars($flash_success) ?></div>
     <?php endif; ?>

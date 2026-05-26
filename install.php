@@ -6,7 +6,7 @@
  */
 
 define('CANTICLE_ROOT', __DIR__);
-define('CANTICLE_VERSION', '1.1.2');
+define('CANTICLE_VERSION', '1.2.0');
 
 // Block access if already installed
 if (file_exists(__DIR__ . '/config.php')) {

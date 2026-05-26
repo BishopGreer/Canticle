@@ -6,7 +6,7 @@
  */
 
 define('CANTICLE_ROOT', __DIR__);
-define('CANTICLE_VERSION', '1.1.2');
+define('CANTICLE_VERSION', '1.2.0');
 
 require_once __DIR__ . '/bootstrap.php';
 

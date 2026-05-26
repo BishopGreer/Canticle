@@ -4,7 +4,7 @@
 declare(strict_types=1);
 
 define('CANTICLE_ROOT', __DIR__);
-define('CANTICLE_VERSION', '1.1.2');
+define('CANTICLE_VERSION', '1.2.0');
 
 // Force UTC for all PHP date functions. Without this, date() and strtotime()
 // use the server's system timezone, causing timestamps stored as UTC in the DB

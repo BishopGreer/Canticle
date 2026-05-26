@@ -264,9 +264,12 @@ document.querySelectorAll('[data-toggle-poll]').forEach(btn => {
   btn.addEventListener('click', () => {
     const poll = document.querySelector('.poll-builder');
     if (!poll) return;
-    const showing = poll.style.display === 'none';
-    poll.style.display = showing ? 'block' : 'none';
-    setPollEnabled(poll, showing);
+    // Use classList so it works whether display:none comes from CSS or inline style
+    const showing = poll.classList.contains('open');
+    poll.classList.toggle('open', !showing);
+    // Also clear any lingering inline display style from older layout versions
+    poll.style.display = '';
+    setPollEnabled(poll, !showing);
   });
 });
 

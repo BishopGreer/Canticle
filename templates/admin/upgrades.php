@@ -1,66 +1,79 @@
 <?php
 $pendingCount = count(array_filter($migrations, fn($m) => !$m['applied']));
 $allApplied   = $pendingCount === 0;
-$hb = function(int $bytes): string {
-    $units = ['B','KB','MB','GB','TB'];
-    $i = 0;
-    while ($bytes >= 1024 && $i < 4) { $bytes /= 1024; $i++; }
-    return round($bytes, 1) . ' ' . $units[$i];
-};
+$cache        = \Canticle\Handlers\Admin\AdminHandler::readUpdateCache();
+$cacheAge     = $cache ? (time() - (int)$cache['checked_at']) : null;
+$behind       = (int) ($cache['behind'] ?? 0);
 ?>
 <h1>Upgrades</h1>
 
-<!-- ── System Info ──────────────────────────────────────────── -->
-<h2>System status</h2>
-<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;margin-bottom:1.5rem">
+<!-- ── Update check ────────────────────────────────────────────── -->
+<div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1.75rem">
 
-  <div class="stat-card">
-    <div class="lbl" style="margin-bottom:.3rem">Canticle</div>
-    <div style="font-size:1.3rem;font-weight:700;color:var(--accent)">v<?= htmlspecialchars($sysInfo['canticle_version']) ?></div>
-  </div>
+  <?php if (!$gitInfo['available']): ?>
+    <?php $reason = $gitInfo['reason'] ?? 'unknown'; ?>
+    <?php if ($reason === 'no_repo' || $reason === 'no_git_no_repo'): ?>
+      <div style="padding:.75rem 1rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:.9rem;max-width:640px">
+        <strong>Git is installed but this directory is not a git repository.</strong><br>
+        <span style="color:var(--muted)">
+          You have been uploading files manually. To enable automatic updates,
+          SSH into the server and run these commands once:
+        </span>
+        <pre style="margin:.6rem 0 0;font-size:.82rem;background:rgba(0,0,0,.2);padding:.6rem .8rem;border-radius:4px;overflow-x:auto"># Back up your config and storage first, then:
+cd <?= htmlspecialchars(CANTICLE_ROOT) ?>
 
-  <div class="stat-card">
-    <div class="lbl" style="margin-bottom:.3rem">PHP</div>
-    <div style="font-size:1.1rem;font-weight:600"><?= htmlspecialchars($sysInfo['php_version']) ?></div>
-    <div style="font-size:.8rem;color:var(--muted);margin-top:.2rem">
-      Memory: <?= htmlspecialchars($sysInfo['memory_limit']) ?> &nbsp;|&nbsp;
-      Exec: <?= htmlspecialchars($sysInfo['max_exec']) ?>
-    </div>
-  </div>
+git init
+git remote add origin https://github.com/BishopGreer/canticle.git
+git fetch origin
+git reset --hard origin/main</pre>
+        <span style="color:var(--danger);font-size:.82rem">
+          ⚠ <code>git reset --hard</code> will overwrite files — back up <code>config.php</code>
+          and the <code>storage/</code> folder first.
+        </span>
+      </div>
+    <?php else: ?>
+      <span style="color:var(--muted);font-size:.9rem">
+        Git is not installed on this server — automatic update checks are disabled.
+      </span>
+    <?php endif; ?>
+  <?php elseif ($cache): ?>
+    <?php if ($behind > 0): ?>
+      <div style="display:flex;align-items:center;gap:.6rem;padding:.65rem 1rem;background:var(--accent-light,#eff6ff);border:1px solid var(--accent);border-radius:var(--radius-sm);font-size:.92rem">
+        <span>🔄</span>
+        <strong><?= $behind ?> update<?= $behind !== 1 ? 's' : '' ?> available</strong>
+        <?php if ($cache['commit'] ?? ''): ?>
+          — <code><?= htmlspecialchars($cache['commit']) ?></code>
+        <?php endif; ?>
+      </div>
+    <?php else: ?>
+      <div style="padding:.65rem 1rem;background:var(--surface-2);border-radius:var(--radius-sm);font-size:.9rem;color:var(--muted)">
+        ✓ Up to date
+      </div>
+    <?php endif; ?>
+    <span style="font-size:.82rem;color:var(--muted)">
+      Last checked:
+      <?php
+        if ($cacheAge < 60)          echo 'just now';
+        elseif ($cacheAge < 3600)    echo round($cacheAge / 60) . ' min ago';
+        else                         echo round($cacheAge / 3600, 1) . ' hr ago';
+      ?>
+    </span>
+  <?php else: ?>
+    <span style="color:var(--muted);font-size:.9rem">Not checked yet.</span>
+  <?php endif; ?>
 
-  <div class="stat-card">
-    <div class="lbl" style="margin-bottom:.3rem">MariaDB / MySQL</div>
-    <div style="font-size:1rem;font-weight:600"><?= htmlspecialchars($sysInfo['db_version']) ?></div>
-  </div>
-
-  <div class="stat-card">
-    <div class="lbl" style="margin-bottom:.3rem">Disk space</div>
-    <div style="font-size:1rem;font-weight:600"><?= htmlspecialchars($sysInfo['disk_free']) ?> free</div>
-    <div style="font-size:.8rem;color:var(--muted);margin-top:.2rem">of <?= htmlspecialchars($sysInfo['disk_total']) ?></div>
-  </div>
+  <?php if ($gitInfo['available']): ?>
+  <form method="POST" action="/admin/upgrades/check-updates" style="margin-left:auto">
+    <input type="hidden" name="_csrf" value="<?= htmlspecialchars(\Canticle\Core\Session::csrfToken()) ?>">
+    <button type="submit" class="btn btn-sm">🔍 Check for updates</button>
+  </form>
+  <?php endif; ?>
 
 </div>
 
-<!-- Writable directories -->
-<div class="admin-form" style="padding:1rem 1.25rem;margin-bottom:1.5rem">
-  <div style="display:flex;flex-wrap:wrap;gap:1.5rem">
-    <?php foreach ($sysInfo['dirs'] as $dir => $ok): ?>
-      <div style="display:flex;align-items:center;gap:.4rem;font-size:.9rem">
-        <span style="color:<?= $ok ? 'var(--success)' : 'var(--danger)' ?>;font-size:1rem"><?= $ok ? '✓' : '✗' ?></span>
-        <code><?= htmlspecialchars($dir) ?>/</code>
-        <span style="color:var(--muted)"><?= $ok ? 'writable' : 'not writable' ?></span>
-      </div>
-    <?php endforeach; ?>
-    <?php foreach ($sysInfo['extensions'] as $ext => $ok): ?>
-      <div style="display:flex;align-items:center;gap:.4rem;font-size:.9rem">
-        <span style="color:<?= $ok ? 'var(--success)' : 'var(--danger)' ?>;font-size:1rem"><?= $ok ? '✓' : '✗' ?></span>
-        <code><?= htmlspecialchars($ext) ?></code>
-        <span style="color:var(--muted)"><?= $ok ? 'loaded' : 'missing' ?></span>
-      </div>
-    <?php endforeach; ?>
-  </div>
-</div>
-
+<p style="color:var(--muted);font-size:.88rem;margin-bottom:1.75rem">
+  For PHP version, disk space, and cache controls see <a href="/admin/server-status">Server Status</a>.
+</p>
 
 <!-- ── Database Migrations ─────────────────────────────────── -->
 <h2>Database migrations</h2>
@@ -161,71 +174,31 @@ $hb = function(int $bytes): string {
     </form>
   </div>
 
+<?php elseif (($gitInfo['reason'] ?? '') === 'no_repo'): ?>
+
+  <div class="admin-form" style="max-width:680px">
+    <p style="color:var(--muted);font-size:.92rem;margin-bottom:.75rem">
+      Once you have initialised the git repository (see above), the pull button will appear here automatically.
+      Until then, update manually:
+    </p>
+    <ol style="font-size:.92rem;line-height:2;padding-left:1.3rem;color:var(--text-2)">
+      <li>Back up your database: <code>mysqldump -u user -p canticle &gt; backup.sql</code></li>
+      <li>Download the latest release from GitHub and upload via SFTP</li>
+      <li>Use the <strong>Run pending migrations</strong> button above</li>
+    </ol>
+  </div>
+
 <?php else: ?>
 
   <div class="admin-form" style="max-width:680px">
     <p style="color:var(--muted);font-size:.92rem;margin-bottom:1rem">
-      <code>git</code> is not available on this server, so automatic code updates are not possible from here.
-      To update Canticle manually:
+      <code>git</code> is not installed on this server. To update Canticle manually:
     </p>
     <ol style="font-size:.92rem;line-height:2;padding-left:1.3rem;color:var(--text-2)">
-      <li>SSH into the server and navigate to <code><?= htmlspecialchars(CANTICLE_ROOT) ?></code></li>
       <li>Back up your database: <code>mysqldump -u user -p canticle &gt; backup.sql</code></li>
-      <li>Pull the latest code: <code>git pull</code></li>
-      <li>Run new migrations: <code>php artisan.php migrate</code></li>
+      <li>Download the latest release from GitHub and upload via SFTP</li>
+      <li>Use the <strong>Run pending migrations</strong> button above</li>
     </ol>
-    <p style="font-size:.88rem;color:var(--muted);margin-top:.75rem">
-      Or use the <strong>Run pending migrations</strong> button above after uploading updated files via SFTP.
-    </p>
   </div>
 
-<?php endif; ?>
-
-
-<!-- ── PHP OPcache ─────────────────────────────────────────── -->
-<?php if (function_exists('opcache_get_status') && ($oc = @opcache_get_status())): ?>
-<h2 style="margin-top:2.5rem">OPcache</h2>
-<div class="admin-form" style="max-width:560px;padding:1rem 1.25rem">
-  <?php
-    $mem   = $oc['memory_usage'] ?? [];
-    $used  = $mem['used_memory'] ?? 0;
-    $free  = $mem['free_memory'] ?? 0;
-    $total = $used + $free;
-    $pct   = $total > 0 ? round($used / $total * 100) : 0;
-    $scripts = $oc['opcache_statistics']['num_cached_scripts'] ?? '—';
-    $hits    = $oc['opcache_statistics']['hits'] ?? '—';
-  ?>
-  <div style="display:flex;flex-wrap:wrap;gap:1.5rem;font-size:.9rem">
-    <div>
-      <div style="font-size:.78rem;color:var(--muted);margin-bottom:.2rem">Status</div>
-      <span class="badge-pill <?= $oc['opcache_enabled'] ? 'badge-success' : 'badge-danger' ?>">
-        <?= $oc['opcache_enabled'] ? 'Enabled' : 'Disabled' ?>
-      </span>
-    </div>
-    <div>
-      <div style="font-size:.78rem;color:var(--muted);margin-bottom:.2rem">Memory used</div>
-      <strong><?= $pct ?>%</strong> (<?= $hb($used) ?> / <?= $hb($total) ?>)
-    </div>
-    <div>
-      <div style="font-size:.78rem;color:var(--muted);margin-bottom:.2rem">Cached scripts</div>
-      <strong><?= number_format((int)$scripts) ?></strong>
-    </div>
-    <div>
-      <div style="font-size:.78rem;color:var(--muted);margin-bottom:.2rem">Cache hits</div>
-      <strong><?= number_format((int)$hits) ?></strong>
-    </div>
-  </div>
-
-  <?php if ($oc['opcache_enabled']): ?>
-  <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
-    <form method="POST" action="/admin/upgrades/opcache-flush">
-      <input type="hidden" name="_csrf" value="<?= htmlspecialchars(\Canticle\Core\Session::csrfToken()) ?>">
-      <button type="submit" class="btn btn-sm">♻ Flush OPcache</button>
-      <span style="color:var(--muted);font-size:.82rem;margin-left:.5rem">
-        Clears cached PHP bytecode so updated files take effect immediately.
-      </span>
-    </form>
-  </div>
-  <?php endif; ?>
-</div>
 <?php endif; ?>
