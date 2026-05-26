@@ -11,6 +11,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.3] — 2026-05-26
+
+### Changed
+- Public/Explore timeline now includes boosts — previously `reblog_of_id IS NULL` silently hid all boosted posts from both the web Explore page and the Mastodon API federated timeline (`GET /api/v1/timelines/public`). Relay-pushed content arrives as Announce activities, so hiding boosts was hiding the majority of relay content. The web renderer already showed "🔄 X boosted" correctly; the filter was just suppressing the rows before they reached the renderer.
+
+---
+
 ## [1.0.2] — 2026-05-19
 
 ### Fixed
@@ -151,6 +158,7 @@ v2.0.0   — major: breaking DB changes, removed APIs, architectural rewrites
 
 Tag every release: `git tag -a v1.0.1 -m "Fix: description"` then `git push origin v1.0.1`.
 
+[1.0.3]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.3
 [1.0.2]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.2
 [1.0.1]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.1
 [1.0.0]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.0

@@ -61,7 +61,6 @@ class Status
                 LEFT JOIN remote_actors ra ON s.remote_actor_id = ra.id
                 WHERE s.deleted_at IS NULL
                   AND s.visibility = 'public'
-                  AND s.reblog_of_id IS NULL
                   AND (
                     s.remote_actor_id IS NULL
                     OR ra.domain NOT IN (
