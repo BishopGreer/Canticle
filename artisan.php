@@ -66,7 +66,13 @@ function deliverActivity(HttpClient $client, array $data): void
     // If a domain has accumulated >= 10 consecutive failures AND was last
     // attempted within the past hour, skip this delivery and fail the job.
     // The admin can clear failed jobs once the remote server recovers.
+    //
+    // NOTE: PDOException extends RuntimeException in PHP, so we must NOT throw
+    // inside the try block and catch RuntimeException — the DB error would be
+    // re-thrown instead of ignored.  We collect the back-off signal as a flag
+    // and throw it after the try-catch so only DB errors are swallowed.
     if ($domain) {
+        $backOffReason = null;
         try {
             $instance = db()->fetch(
                 'SELECT delivery_failures, last_delivery_at FROM instances WHERE domain = ?',
@@ -76,16 +82,16 @@ function deliverActivity(HttpClient $client, array $data): void
                 $lastAt     = $instance['last_delivery_at'] ? strtotime($instance['last_delivery_at']) : 0;
                 $hoursSince = (time() - $lastAt) / 3600;
                 if ($hoursSince < 1.0) {
-                    throw new \RuntimeException(
+                    $backOffReason =
                         "Back-off: $domain has {$instance['delivery_failures']} consecutive delivery failures. " .
-                        'Will retry after 1-hour cooling period. Admin → Queue to clear if server is gone.'
-                    );
+                        'Will retry after 1-hour cooling period. Admin → Queue to clear if server is gone.';
                 }
             }
-        } catch (\RuntimeException $e) {
-            throw $e; // re-throw back-off exceptions
         } catch (\Throwable) {
-            // delivery_failures column not yet present (migration pending) — proceed normally
+            // delivery_failures column not yet present (migration 006 pending) — proceed normally
+        }
+        if ($backOffReason !== null) {
+            throw new \RuntimeException($backOffReason);
         }
     }
 
