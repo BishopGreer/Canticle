@@ -18,7 +18,7 @@ $icons = [
     <div class="notification-body">
       <?php $acct = $n['account'] ?? null; ?>
       <?php if ($acct): ?>
-        <a href="<?= BASE_URL ?>/@<?= htmlspecialchars($acct['username']) ?>">
+        <a href="<?= BASE_URL ?>/@<?= htmlspecialchars($acct['acct'] ?? $acct['username']) ?>">
           <strong><?= htmlspecialchars($acct['display_name'] ?: $acct['username']) ?></strong>
         </a>
       <?php endif; ?>

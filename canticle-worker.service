@@ -5,12 +5,18 @@ Wants=mariadb.service
 
 [Service]
 Type=simple
+# Run as the same user your web server uses (www-data for Apache on Debian).
+# If your storage/ directory is owned by a different user, change this.
 User=www-data
 Group=www-data
 WorkingDirectory=/var/web/myocci.net/public_html/mastodon
 ExecStart=/usr/bin/php /var/web/myocci.net/public_html/mastodon/artisan.php worker
+# Restart automatically if the process crashes; wait 5 s before restarting
 Restart=always
 RestartSec=5
+# Allow 30 s for any in-progress job to finish before force-killing
+KillSignal=SIGTERM
+TimeoutStopSec=30
 StandardOutput=append:/var/web/myocci.net/public_html/mastodon/storage/logs/worker.log
 StandardError=append:/var/web/myocci.net/public_html/mastodon/storage/logs/worker.log
 
