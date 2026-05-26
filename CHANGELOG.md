@@ -11,6 +11,24 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.1.0] — 2026-05-26
+
+Six federation health improvements modelled on patterns from Mastodon's source:
+
+### Added
+- **Object dereferencing** — `handleCreate` now fetches the full post from the remote server when the activity delivers only a bare URI string as the object (some servers send stub-style activities). Previously those posts were silently dropped.
+- **Relevance guard** — incoming `Create` and `Announce` activities are now filtered before being stored. A post is only saved if the remote actor is followed by a local user, the post addresses/mentions a local user, it replies to a local user's post, or it arrives from a subscribed relay. Relay-pushed content is always accepted. This prevents unbounded DB growth from unsolicited federation traffic.
+- **30-day age window** — remote posts older than 30 days are not stored. They won't appear in any timeline and only consume space.
+- **Tombstones** (migration `006_inbox_safety.sql`) — when a `Delete` activity arrives for a URI that is not locally known, a tombstone record is written. If a `Create` or `Announce` for that same URI arrives later (Delete beat Create in network ordering), it is silently discarded. Tombstones are pruned after 7 days by the nightly pruner.
+- **Delivery failure tracking** (migration `006_inbox_safety.sql`) — the worker now records success/failure counts per remote domain in the `instances` table. After 10 consecutive failures, deliveries to that domain are skipped for 1 hour (back-off). Successful delivery resets the counter. This prevents the queue from flooding with retries to dead servers.
+- **Boost deduplication in timelines** — if the same original post is boosted multiple times within a single timeline fetch, only the most-recent boost is shown. Prevents a single popular post from filling the entire Explore or home feed.
+
+### Changed
+- `handleAnnounce` now also accepts `Article`, `Page`, and `Question` object types (in addition to `Note`) when fetching the original post — consistent with Mastodon's behaviour.
+- Mention notifications are now fired for all local users in the `to`/`cc` audience of an incoming Create, not only for the parent post's author.
+
+---
+
 ## [1.0.3] — 2026-05-26
 
 ### Changed
@@ -158,6 +176,7 @@ v2.0.0   — major: breaking DB changes, removed APIs, architectural rewrites
 
 Tag every release: `git tag -a v1.0.1 -m "Fix: description"` then `git push origin v1.0.1`.
 
+[1.1.0]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.0
 [1.0.3]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.3
 [1.0.2]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.2
 [1.0.1]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.1

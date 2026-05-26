@@ -59,27 +59,73 @@ function runWorker(bool $once): void
 
 function deliverActivity(HttpClient $client, array $data): void
 {
-    $result = $client->postActivity(
-        $data['inbox_url'],
-        $data['activity'],
-        $data['actor_url'],
-        $data['private_key']
-    );
+    $inboxUrl = $data['inbox_url'];
+    $domain   = parse_url($inboxUrl, PHP_URL_HOST) ?: '';
 
-    // status=0 means cURL failed entirely (DNS, connection refused, SSL error, etc.)
-    if ($result['status'] === 0) {
-        throw new \RuntimeException("Connection failed to {$data['inbox_url']}: " . ($result['error'] ?? 'curl error'));
+    // ── Delivery failure back-off ────────────────────────────────────────────
+    // If a domain has accumulated >= 10 consecutive failures AND was last
+    // attempted within the past hour, skip this delivery and fail the job.
+    // The admin can clear failed jobs once the remote server recovers.
+    if ($domain) {
+        try {
+            $instance = db()->fetch(
+                'SELECT delivery_failures, last_delivery_at FROM instances WHERE domain = ?',
+                [$domain]
+            );
+            if ($instance && (int) $instance['delivery_failures'] >= 10) {
+                $lastAt     = $instance['last_delivery_at'] ? strtotime($instance['last_delivery_at']) : 0;
+                $hoursSince = (time() - $lastAt) / 3600;
+                if ($hoursSince < 1.0) {
+                    throw new \RuntimeException(
+                        "Back-off: $domain has {$instance['delivery_failures']} consecutive delivery failures. " .
+                        'Will retry after 1-hour cooling period. Admin → Queue to clear if server is gone.'
+                    );
+                }
+            }
+        } catch (\RuntimeException $e) {
+            throw $e; // re-throw back-off exceptions
+        } catch (\Throwable) {
+            // delivery_failures column not yet present (migration pending) — proceed normally
+        }
     }
 
-    // 4xx = our fault (bad signature, not found, etc.) — don't retry endlessly
-    // 5xx = their fault — worth retrying
+    // ── Attempt delivery ─────────────────────────────────────────────────────
+    $result = $client->postActivity($inboxUrl, $data['activity'], $data['actor_url'], $data['private_key']);
+
+    // ── Record outcome ───────────────────────────────────────────────────────
+    if ($domain) {
+        $now     = gmdate('Y-m-d H:i:s');
+        $success = $result['status'] >= 200 && $result['status'] < 300;
+        try {
+            if ($success) {
+                db()->query(
+                    "UPDATE instances SET delivery_failures = 0, last_delivery_at = ? WHERE domain = ?",
+                    [$now, $domain]
+                );
+            } else {
+                db()->query(
+                    "UPDATE instances SET delivery_failures = delivery_failures + 1, last_delivery_at = ? WHERE domain = ?",
+                    [$now, $domain]
+                );
+            }
+        } catch (\Throwable) {
+            // Column not yet present — migration pending; ignore
+        }
+    }
+
+    // ── Raise on errors ──────────────────────────────────────────────────────
+    // status=0 means cURL failed entirely (DNS, connection refused, SSL, etc.)
+    if ($result['status'] === 0) {
+        throw new \RuntimeException("Connection failed to $inboxUrl: " . ($result['error'] ?? 'curl error'));
+    }
+
+    // 4xx = our fault (bad signature, not found, etc.)
+    // 5xx = their fault (server error) — worth retrying
     if ($result['status'] >= 400) {
-        // Include the remote body so we can see e.g. "Invalid signature" vs
-        // "Request not signed" vs "Could not find actor" in the queue log.
         $remoteError = trim(strip_tags($result['body'] ?? ''));
-        $remoteError = mb_substr($remoteError, 0, 300);  // cap length
+        $remoteError = mb_substr($remoteError, 0, 300);
         throw new \RuntimeException(
-            "HTTP {$result['status']} from {$data['inbox_url']}"
+            "HTTP {$result['status']} from $inboxUrl"
             . ($remoteError ? " — $remoteError" : '')
         );
     }

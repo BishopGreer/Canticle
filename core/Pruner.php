@@ -60,6 +60,12 @@ class Pruner
             $summary['notes'][] = 'Actor pruning skipped (remote_actor_max_days = 0).';
         }
 
+        // Tombstones older than 7 days are safe to remove — the race window is long past
+        $tombstones = $this->pruneTombstones();
+        if ($tombstones > 0) {
+            $summary['notes'][] = "Tombstones: removed $tombstones expired Delete records.";
+        }
+
         // Log this run (table may not exist if migration 003 hasn't been applied yet)
         try {
             $this->db->insert('prune_log', [
@@ -252,6 +258,31 @@ class Pruner
         $this->db->query("DELETE FROM remote_actors WHERE id IN ($sp)", $ids);
 
         return count($ids);
+    }
+
+    // ── Tombstone pruning ─────────────────────────────────────────────────────
+
+    /**
+     * Delete tombstone records older than 7 days.
+     * Tombstones only need to cover the race window between a Delete and a
+     * late-arriving Create/Announce for the same URI — 7 days is generous.
+     */
+    private function pruneTombstones(): int
+    {
+        try {
+            $cutoff = gmdate('Y-m-d H:i:s', strtotime('-7 days'));
+            $result = $this->db->fetch(
+                "SELECT COUNT(*) AS c FROM tombstones WHERE created_at < ?",
+                [$cutoff]
+            );
+            $count = (int) ($result['c'] ?? 0);
+            if ($count > 0) {
+                $this->db->query("DELETE FROM tombstones WHERE created_at < ?", [$cutoff]);
+            }
+            return $count;
+        } catch (\Throwable) {
+            return 0; // table not yet created — migration pending
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

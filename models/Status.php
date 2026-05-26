@@ -71,7 +71,7 @@ class Status
         if ($maxId)   { $sql .= ' AND s.id < ?';  $params[] = $maxId; }
         if ($sinceId) { $sql .= ' AND s.id > ?';  $params[] = $sinceId; }
         $sql .= ' ORDER BY s.created_at DESC, s.id DESC LIMIT ' . (int) $limit;
-        return db()->fetchAll($sql, $params);
+        return self::deduplicateBoosts(db()->fetchAll($sql, $params));
     }
 
     public static function homeTimeline(int $userId, int $limit = 20, ?int $maxId = null, ?int $sinceId = null): array
@@ -131,7 +131,27 @@ class Status
         if ($maxId)   { $sql .= ' AND s.id < ?'; $params[] = $maxId; }
         if ($sinceId) { $sql .= ' AND s.id > ?'; $params[] = $sinceId; }
         $sql .= ' ORDER BY s.created_at DESC, s.id DESC LIMIT ' . (int) $limit;
-        return db()->fetchAll($sql, $params);
+        return self::deduplicateBoosts(db()->fetchAll($sql, $params));
+    }
+
+    /**
+     * Deduplicate boosts: if the same original post has been boosted multiple
+     * times within the result set, show only the most-recent boost and skip
+     * the rest.  The original post itself is always shown if it appears directly
+     * (i.e. from a followed account) regardless of whether boosts are present.
+     */
+    private static function deduplicateBoosts(array $rows): array
+    {
+        $seenBoostedIds = []; // reblog_of_id values already represented by a boost
+        $result         = [];
+        foreach ($rows as $row) {
+            if ($row['reblog_of_id']) {
+                if (isset($seenBoostedIds[$row['reblog_of_id']])) continue;
+                $seenBoostedIds[$row['reblog_of_id']] = true;
+            }
+            $result[] = $row;
+        }
+        return $result;
     }
 
     /**
