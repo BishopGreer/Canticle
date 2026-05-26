@@ -11,6 +11,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.1.2] — 2026-05-26
+
+### Fixed
+- **Worker crashed on every delivery before migration 006 was applied** — `PDOException` extends `RuntimeException` in PHP. The catch-block meant to silently ignore a missing `delivery_failures` column was structured as `catch (RuntimeException) { throw $e }` followed by `catch (Throwable)`. Because `PDOException` is a `RuntimeException`, the DB error was caught and re-thrown, crashing every `DeliverActivity` job with *Unknown column 'delivery_failures'* before any HTTP request was made. Restructured the back-off check to collect the back-off signal as a flag outside the try block so `catch(\Throwable)` exclusively handles DB errors.
+
+---
+
 ## [1.1.1] — 2026-05-26
 
 ### Fixed
@@ -184,6 +191,7 @@ v2.0.0   — major: breaking DB changes, removed APIs, architectural rewrites
 
 Tag every release: `git tag -a v1.0.1 -m "Fix: description"` then `git push origin v1.0.1`.
 
+[1.1.2]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.2
 [1.1.1]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.1
 [1.1.0]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.0
 [1.0.3]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.3
