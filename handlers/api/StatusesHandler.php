@@ -92,9 +92,11 @@ class StatusesHandler
             }
         }
 
-        // Federate
+        // Federate — public, unlisted, and private (followers-only) are all
+        // delivered to remote followers. Direct messages are not federated here
+        // (mention-based DM delivery would require per-recipient addressing).
         $status = Status::find($statusId);
-        if ($status && in_array($visibility, ['public','unlisted'])) {
+        if ($status && in_array($visibility, ['public', 'unlisted', 'private'])) {
             $fed = new Federator(new Queue(db()));
             $fed->deliverStatus($status, $user);
         }

@@ -374,6 +374,20 @@ class Status
         $user   = User::find($status['local_user_id']);
         $media  = Media::forStatus($status['id']);
 
+        $AS_PUBLIC   = 'https://www.w3.org/ns/activitystreams#Public';
+        $followersUrl = actorUrl($user['username']) . '/followers';
+
+        // ActivityPub addressing by visibility (matches Mastodon convention):
+        //   public   → to: [Public],     cc: [followers]
+        //   unlisted → to: [followers],  cc: [Public]
+        //   private  → to: [followers],  cc: []
+        //   direct   → to: [followers],  cc: []  (mention resolution handled separately)
+        [$toField, $ccField] = match ($status['visibility']) {
+            'public'   => [[$AS_PUBLIC], [$followersUrl]],
+            'unlisted' => [[$followersUrl], [$AS_PUBLIC]],
+            default    => [[$followersUrl], []],
+        };
+
         $obj = [
             'id'           => $status['uri'],
             'type'         => 'Note',
@@ -382,12 +396,8 @@ class Status
             'published'    => date('c', strtotime($status['created_at'])),
             'url'          => $status['url'] ?: $status['uri'],
             'attributedTo' => actorUrl($user['username']),
-            'to'           => $status['visibility'] === 'public'
-                ? ['https://www.w3.org/ns/activitystreams#Public']
-                : [actorUrl($user['username']) . '/followers'],
-            'cc'           => $status['visibility'] === 'public'
-                ? [actorUrl($user['username']) . '/followers']
-                : [],
+            'to'           => $toField,
+            'cc'           => $ccField,
             'sensitive'    => (bool) $status['sensitive'],
             'content'      => $status['content'],
             'contentMap'   => [$status['language'] => $status['content']],
@@ -408,8 +418,8 @@ class Status
             'type'      => 'Create',
             'actor'     => actorUrl($user['username']),
             'published' => $obj['published'],
-            'to'        => $obj['to'],
-            'cc'        => $obj['cc'],
+            'to'        => $toField,
+            'cc'        => $ccField,
             'object'    => $obj,
         ];
     }
