@@ -11,6 +11,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.1.3] — 2026-05-26
+
+### Fixed
+- **Posts appeared "5 hours ago" immediately after creation** — two root causes, both fixed:
+  1. No `date_default_timezone_set()` in `bootstrap.php` — PHP inherited the server's system timezone (UTC-5/Eastern). `strtotime()` misread UTC values from the database as local time, and `date('c')` emitted local-time ISO 8601 strings that Mastodon clients parsed as 5 hours stale.
+  2. No `SET time_zone` on the PDO connection — MariaDB's `CURRENT_TIMESTAMP` used the server's local timezone, storing `created_at` 5 hours behind UTC.
+  - `bootstrap.php`: added `date_default_timezone_set('UTC')` — all PHP date/`strtotime()` calls now operate in UTC.
+  - `Database.php`: added `SET time_zone = '+00:00'` on every new PDO connection — `CURRENT_TIMESTAMP` always returns UTC regardless of server configuration.
+
+---
+
 ## [1.1.2] — 2026-05-26
 
 ### Fixed
@@ -191,6 +202,7 @@ v2.0.0   — major: breaking DB changes, removed APIs, architectural rewrites
 
 Tag every release: `git tag -a v1.0.1 -m "Fix: description"` then `git push origin v1.0.1`.
 
+[1.1.3]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.3
 [1.1.2]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.2
 [1.1.1]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.1
 [1.1.0]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.0
