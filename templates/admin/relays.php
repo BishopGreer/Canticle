@@ -4,8 +4,9 @@
   <h2 style="margin-top:0;margin-bottom:.6rem">Subscribe to a relay</h2>
   <p style="color:var(--muted);font-size:.88rem;margin-bottom:1rem">
     ActivityPub relays forward public posts from across the fediverse to your instance, making timelines
-    more lively even on a small server. Enter the base URL of the relay (e.g. <code>https://relay.fedi.buzz</code>).
-    Canticle will auto-detect the relay actor and send a signed Follow request.
+    more lively even on a small server. Enter the relay base URL <em>or</em> its direct actor URL
+    (e.g. <code>https://relay.fedi.buzz</code> or <code>https://relay.example.com/actor</code>).
+    Canticle will auto-detect the actor and send a signed Follow request.
     The relay shows as <strong>Pending</strong> until its server sends back an Accept.
   </p>
   <form method="POST" action="/admin/relays/add" class="inline-form">

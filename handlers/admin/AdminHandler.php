@@ -292,10 +292,15 @@ class AdminHandler
         }
 
         // Auto-detect the relay actor URL and inbox by fetching the relay endpoint.
-        // Different relay software uses different paths (root URL, /actor, /actors/main-relay, etc.)
+        // Accepts a relay base URL or a direct actor URL (e.g. https://relay.example.com/actor).
         $relay = $this->fetchRelayActor($url);
         if (!$relay) {
-            Session::flash('error', 'Could not reach the relay or parse its actor. Check the URL.');
+            Session::flash('error',
+                'Could not reach the relay or parse its actor document. ' .
+                'Try entering the direct actor URL instead ' .
+                '(e.g. https://relay.example.com/actor). ' .
+                'Make sure the relay is online and reachable from your server.'
+            );
             $res->redirect('/admin/relays');
         }
 
@@ -423,23 +428,57 @@ class AdminHandler
     }
 
     /**
-     * Fetch a relay's actor document using the proper HttpClient (cURL).
-     * Tries the URL as-is first (many relays serve their actor at the root),
-     * then appends /actor as a fallback.
+     * Fetch a relay's actor document. Accepts either a relay base URL or a
+     * direct actor URL. Tries several well-known actor paths, and falls back
+     * to nodeinfo-based discovery if the common paths don't work.
      * Returns ['actor_url' => ..., 'inbox_url' => ...] or null on failure.
      */
     private function fetchRelayActor(string $url): ?array
     {
-        $http       = new \Canticle\Core\HttpClient(8);
-        $candidates = array_unique([rtrim($url, '/'), rtrim($url, '/') . '/actor']);
+        $http = new \Canticle\Core\HttpClient(12); // generous timeout
+        $base = rtrim($url, '/');
+
+        // Build candidate list — order matters, most common first.
+        // If the user entered a direct actor URL (contains /actor or /users/ etc.)
+        // put it first and also try its origin as base.
+        $candidates = [$base];
+
+        // Always try the standard paths
+        foreach (['/actor', '/actors/main-relay', '/users/main-relay', '/relay'] as $path) {
+            $candidates[] = $base . $path;
+        }
+
+        // If the URL looks like it IS already an actor document, deduplicate naturally
+        $candidates = array_unique($candidates);
 
         foreach ($candidates as $candidate) {
             $actor = $http->fetchActor($candidate);
             if (!is_array($actor) || empty($actor['inbox'])) continue;
+            // Sanity-check: must look like an ActivityPub actor
+            if (!in_array($actor['type'] ?? '', ['Application', 'Service', 'Person', 'Group', 'Organization'])) continue;
             return [
                 'actor_url' => $actor['id'] ?? $candidate,
                 'inbox_url' => $actor['inbox'],
             ];
+        }
+
+        // Last resort: try nodeinfo to locate the actor
+        $nodeinfo = $http->fetchActor($base . '/.well-known/nodeinfo');
+        if (is_array($nodeinfo)) {
+            $links = $nodeinfo['links'] ?? [];
+            foreach ($links as $link) {
+                $niUrl = $link['href'] ?? null;
+                if (!$niUrl) continue;
+                $ni = $http->fetchActor($niUrl);
+                // Some nodeinfo docs embed the actor URL — not standard, but check anyway
+                $actorHref = $ni['metadata']['actorUrl'] ?? null;
+                if ($actorHref) {
+                    $actor = $http->fetchActor($actorHref);
+                    if (is_array($actor) && !empty($actor['inbox'])) {
+                        return ['actor_url' => $actor['id'] ?? $actorHref, 'inbox_url' => $actor['inbox']];
+                    }
+                }
+            }
         }
 
         return null;
