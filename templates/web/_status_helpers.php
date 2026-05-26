@@ -33,7 +33,8 @@ function renderStatusMastodon(array $status, ?array $viewer): string
     $faved      = $display['favourited'] ?? false;
     $rebogged   = $display['reblogged'] ?? false;
 
-    $html = '<article class="status">';
+    $permalinkUrl = htmlspecialchars($baseUrl . '/@' . ($account['acct'] ?? $account['username'] ?? '') . '/' . $sid);
+    $html = '<article class="status" data-permalink="' . $permalinkUrl . '">';
 
     if ($isBoosted) {
         $boosterName = htmlspecialchars($status['account']['display_name'] ?: $status['account']['username']);
@@ -78,7 +79,7 @@ function renderStatusMastodon(array $status, ?array $viewer): string
 
     // Actions
     $html .= '<div class="status-actions">';
-    $html .= '<button data-action="reply" data-id="' . $sid . '">💬 <span class="count">' . $repCount . '</span></button>';
+    $html .= '<button data-action="reply" data-id="' . $sid . '" data-acct="' . $acct . '">💬 <span class="count">' . $repCount . '</span></button>';
     $html .= '<button data-action="reblog" data-id="' . $sid . '" class="' . ($rebogged ? 'active' : '') . '">🔄 <span class="count">' . $rebCount . '</span></button>';
     $html .= '<button data-action="favourite" data-id="' . $sid . '" class="' . ($faved ? 'active' : '') . '">⭐ <span class="count">' . $favCount . '</span></button>';
     $html .= '<a href="' . htmlspecialchars($baseUrl . '/@' . ($account['acct'] ?? $account['username'] ?? '') . '/' . $sid) . '" style="font-size:.82rem;color:var(--muted);margin-left:auto">🔗</a>';

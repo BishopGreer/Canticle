@@ -13,6 +13,11 @@ function openCompose() {
 function closeCompose() {
   var modal = document.getElementById('compose-modal');
   if (modal) modal.classList.remove('open');
+  // Clear reply state
+  var replyInput = document.getElementById('compose-reply-to-id');
+  if (replyInput) replyInput.value = '';
+  var replyLabel = document.getElementById('compose-reply-label');
+  if (replyLabel) { replyLabel.textContent = ''; replyLabel.style.display = 'none'; }
 }
 
 // Button that opens the modal
@@ -75,8 +80,8 @@ if (_composeForm) {
       if (preview) preview.innerHTML = '';
       window.location.reload();
     } else {
-      var err = await res.json();
-      alert(err.error || 'Failed to post');
+      var err = await res.json().catch(() => ({}));
+      alert(err.error || 'Failed to post (HTTP ' + res.status + ')');
     }
   });
 }
@@ -124,6 +129,15 @@ document.querySelectorAll('time[datetime]').forEach(el => {
   }
 });
 
+// ── Click article to open status permalink ────────────────────────────────────
+document.addEventListener('click', e => {
+  // Don't interfere with buttons, links, or form elements inside the card
+  if (e.target.closest('a, button, input, label, select, textarea')) return;
+  const article = e.target.closest('article.status[data-permalink]');
+  if (!article) return;
+  window.location.href = article.dataset.permalink;
+});
+
 // ── API action buttons (fav, boost, reply via fetch) ─────────────────────────
 async function apiPost(url, data = {}) {
   const res = await fetch(url, {
@@ -134,6 +148,10 @@ async function apiPost(url, data = {}) {
     },
     body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'HTTP ' + res.status);
+  }
   return res.json();
 }
 
@@ -141,24 +159,52 @@ document.addEventListener('click', async e => {
   const btn = e.target.closest('[data-action]');
   if (!btn) return;
   e.preventDefault();
+  e.stopPropagation(); // prevent article permalink navigation
 
   const action   = btn.dataset.action;
   const statusId = btn.dataset.id;
-
   if (!statusId) return;
 
   if (action === 'favourite') {
-    const active = btn.classList.toggle('active');
-    const countEl = btn.querySelector('.count');
+    const active   = btn.classList.toggle('active');
+    const countEl  = btn.querySelector('.count');
     apiPost(`/api/v1/statuses/${statusId}/${active ? 'favourite' : 'unfavourite'}`)
-      .then(s => { if (countEl) countEl.textContent = s.favourites_count; });
+      .then(s => { if (countEl) countEl.textContent = s.favourites_count ?? 0; })
+      .catch(err => { btn.classList.toggle('active'); alert('Could not favourite: ' + err.message); });
   }
 
   if (action === 'reblog') {
-    const active = btn.classList.toggle('active');
-    const countEl = btn.querySelector('.count');
+    const active   = btn.classList.toggle('active');
+    const countEl  = btn.querySelector('.count');
     apiPost(`/api/v1/statuses/${statusId}/${active ? 'reblog' : 'unreblog'}`)
-      .then(s => { if (countEl) countEl.textContent = s.reblogs_count || s.reblog?.reblogs_count; });
+      .then(s => {
+        const count = active ? (s.reblog?.reblogs_count ?? s.reblogs_count) : s.reblogs_count;
+        if (countEl) countEl.textContent = count ?? 0;
+      })
+      .catch(err => { btn.classList.toggle('active'); alert('Could not repost: ' + err.message); });
+  }
+
+  if (action === 'reply') {
+    const acct = btn.dataset.acct || '';
+    // Store reply-to ID in hidden compose field
+    var replyInput = document.getElementById('compose-reply-to-id');
+    if (replyInput) replyInput.value = statusId;
+    // Show "Replying to @acct" in modal header
+    var replyLabel = document.getElementById('compose-reply-label');
+    if (replyLabel && acct) {
+      replyLabel.textContent = 'Replying to @' + acct;
+      replyLabel.style.display = '';
+    }
+    openCompose();
+    // Pre-fill @mention (only if textarea is empty)
+    if (acct) {
+      var ta = document.getElementById('compose-textarea');
+      if (ta && !ta.value.trim()) {
+        ta.value = '@' + acct + ' ';
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+      }
+    }
   }
 });
 

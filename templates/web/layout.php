@@ -81,12 +81,16 @@ $maxPollOptions = (int) config('max_poll_options', 4);
   <div class="compose-modal-inner">
 
     <div class="compose-modal-header">
-      <strong style="font-size:.95rem">New post</strong>
+      <div>
+        <strong style="font-size:.95rem">New post</strong>
+        <div id="compose-reply-label" style="display:none;font-size:.82rem;color:var(--muted);margin-top:.15rem"></div>
+      </div>
       <button type="button" class="compose-modal-close" data-compose-close aria-label="Close">&times;</button>
     </div>
 
     <div class="compose-modal-body" data-compose data-max-chars="<?= $maxChars ?>">
       <form id="compose-form">
+        <input type="hidden" name="in_reply_to_id" id="compose-reply-to-id" value="">
         <div style="display:flex;gap:.75rem">
           <?php
           $sidebarAvatar = $user['avatar']
@@ -96,7 +100,7 @@ $maxPollOptions = (int) config('max_poll_options', 4);
           <img src="<?= htmlspecialchars($sidebarAvatar) ?>" class="avatar" alt="" style="flex-shrink:0">
           <div style="flex:1;min-width:0">
             <textarea name="status" id="compose-textarea" placeholder="What's on your mind?"
-                      style="width:100%;min-height:200px;padding:.75rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:1rem;resize:vertical;font-family:inherit;line-height:1.5"
+                      style="width:500px;max-width:100%;height:50px;min-height:50px;padding:.75rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:1rem;resize:vertical;font-family:inherit;line-height:1.5"
                       required></textarea>
             <div class="media-preview" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem"></div>
             <div class="poll-builder" style="display:none;margin-top:.75rem;border:1px solid var(--border);border-radius:var(--radius-sm);padding:.75rem">
