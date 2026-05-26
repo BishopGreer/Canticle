@@ -142,21 +142,44 @@ class WebHandler
     /** GET /@:username/:statusId */
     public function statusPermalink(Request $req, Response $res): void
     {
-        $statusId = (int) $req->param('statusId');
-        $status   = Status::find($statusId);
-        if (!$status) $res->error('Not found', 404);
+        $statusId  = (int) $req->param('statusId');
+        $rawStatus = Status::find($statusId);
+        if (!$rawStatus) $res->error('Not found', 404);
 
         $viewer = Auth::user();
-        // AP content negotiation
+
+        // ActivityPub content negotiation — serve JSON to federation crawlers
         if ($req->accepts('application/activity+json') || $req->accepts('application/ld+json')) {
-            $res->activityJson(Status::toActivityPub($status)['object'] ?? []);
+            $res->activityJson(Status::toActivityPub($rawStatus)['object'] ?? []);
         }
 
+        // Walk up the reply chain to build ancestors (oldest first, max 20 deep)
+        $ancestors = [];
+        $current   = $rawStatus;
+        $depth     = 0;
+        while ($current['reply_to_id'] && $depth < 20) {
+            $parent = Status::find($current['reply_to_id']);
+            if (!$parent) break;
+            array_unshift($ancestors, Status::toMastodon($parent, $viewer));
+            $current = $parent;
+            $depth++;
+        }
+
+        // Direct replies to this post
+        $childRows   = db()->fetchAll(
+            'SELECT * FROM statuses WHERE reply_to_id = ? AND deleted_at IS NULL ORDER BY id ASC LIMIT 100',
+            [$rawStatus['id']]
+        );
+        $descendants = array_map(fn($r) => Status::toMastodon($r, $viewer), $childRows);
+
         $res->html($this->render('web/status', [
-            'status'  => Status::toMastodon($status, $viewer),
-            'user'    => $viewer,
-            'unread'  => $viewer ? Notification::unreadCount($viewer['id']) : 0,
-            'title'   => 'Post — ' . config('site_name'),
+            'status'      => Status::toMastodon($rawStatus, $viewer),
+            'ancestors'   => $ancestors,
+            'descendants' => $descendants,
+            'user'        => $viewer,
+            'tab'         => '',
+            'unread'      => $viewer ? Notification::unreadCount($viewer['id']) : 0,
+            'title'       => 'Post — ' . config('site_name'),
         ]));
     }
 
@@ -588,7 +611,7 @@ class WebHandler
         }
 
         // Auth pages are complete HTML documents — no layout wrapper needed
-        $fullPage = in_array($template, ['web/sign_in', 'web/sign_up', 'web/closed', 'web/status']);
+        $fullPage = in_array($template, ['web/sign_in', 'web/sign_up', 'web/closed']);
         if ($fullPage) {
             ob_start();
             require $file;

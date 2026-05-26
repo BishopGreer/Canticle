@@ -337,6 +337,41 @@ button:active { transform: scale(.97); }
 }
 .status-actions a.permalink:hover { color: var(--accent); text-decoration: none; }
 
+/* ── Thread / status permalink view ─────────────────────────── */
+/* Ancestors sit above the focal post with a left connector line  */
+.thread-ancestor .status {
+  border-left: 2px solid var(--border);
+  margin-left: .75rem;
+  padding-left: .75rem;
+}
+/* Focal post is visually emphasised */
+.thread-focal .status {
+  border-left: 3px solid var(--accent);
+  padding-left: .85rem;
+  background: var(--surface-2);
+}
+.thread-focal .status:hover { background: var(--surface-2); }
+/* Replies sit below with a subtle indent */
+.thread-reply .status {
+  margin-left: 1.5rem;
+  border-left: 2px solid var(--border);
+  padding-left: .75rem;
+}
+.thread-replies-label {
+  padding: .6rem 1rem .2rem;
+  font-size: .82rem;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.thread-no-replies {
+  padding: 1.25rem 1rem;
+  color: var(--muted);
+  font-size: .9rem;
+  text-align: center;
+}
+
 /* ── Poll ────────────────────────────────────────────────────── */
 .poll { margin: .85rem 0 0; }
 .poll-option { margin: .45rem 0; }
