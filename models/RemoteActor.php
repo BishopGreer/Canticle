@@ -62,7 +62,11 @@ class RemoteActor
             if (!$url) continue;
             $data = $client->fetchActor($url);
             if (is_array($data) && isset($data['totalItems'])) {
-                $updates[$countField] = (int) $data['totalItems'];
+                // Clamp to INT UNSIGNED range (0–4294967295).
+                // Some servers return -1 for private/unavailable collections;
+                // negative values are rejected by the UNSIGNED column.
+                $raw = (int) $data['totalItems'];
+                $updates[$countField] = max(0, min(4294967295, $raw));
             }
         }
 
