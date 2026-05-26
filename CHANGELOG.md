@@ -11,6 +11,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.1.4] — 2026-05-26
+
+### Fixed
+- **Clicking a post did nothing** — status cards are now clickable. Clicking anywhere on the card body (not on a button or link) navigates to the status permalink page where you can read the full thread and comments.
+- **Reply button did nothing** — clicking 💬 now opens the compose modal with `in_reply_to_id` pre-filled, a "Replying to @acct" label in the modal header, and the textarea pre-filled with the `@mention`. Modal close clears the reply state.
+- **Repost and favourite errors were invisible** — if the API call failed, the button toggled but nothing happened. Errors now surface via alert and the button toggle is reversed so UI stays consistent with server state.
+- **Repost count showed wrong value** — corrected to read `reblog.reblogs_count` on boost (server returns boost wrapper) and `reblogs_count` directly on unboost (server returns original).
+
+### Changed
+- Compose textarea resized to 500 × 50 px (initial height 50 px, resizable vertically).
+
+---
+
 ## [1.1.3] — 2026-05-26
 
 ### Fixed
@@ -202,6 +215,7 @@ v2.0.0   — major: breaking DB changes, removed APIs, architectural rewrites
 
 Tag every release: `git tag -a v1.0.1 -m "Fix: description"` then `git push origin v1.0.1`.
 
+[1.1.4]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.4
 [1.1.3]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.3
 [1.1.2]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.2
 [1.1.1]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.1
