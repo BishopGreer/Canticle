@@ -719,8 +719,22 @@ class AdminHandler
         // Set upstream tracking so future pulls work without specifying remote/branch
         $this->runCommand([...$g, 'branch', '--set-upstream-to=origin/' . $remoteBranch]);
 
+        // Stash any local changes (e.g. files uploaded manually) that would
+        // block the merge. We drop the stash afterwards — the pulled versions
+        // from the repo are what we want, not the manual uploads.
+        $stashOut = trim($this->runCommand([...$g, 'stash', '--include-untracked', '-m', 'pre-pull auto-stash']));
+        $stashed  = !str_contains($stashOut, 'No local changes');
+
         $log = "▶ Running git pull origin {$remoteBranch} …\n";
+        if ($stashed) {
+            $log .= "  (stashed local changes: {$stashOut})\n";
+        }
         $log .= $this->runCommand([...$g, 'pull', '--ff-only', 'origin', $remoteBranch]);
+
+        // Drop the stash — manual uploads are superseded by the pulled code
+        if ($stashed) {
+            $this->runCommand([...$g, 'stash', 'drop']);
+        }
 
         // Auto-run any newly available migrations
         $pending = array_filter($this->getMigrationStatus(), fn($m) => !$m['applied']);
