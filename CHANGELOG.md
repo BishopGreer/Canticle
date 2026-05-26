@@ -11,6 +11,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.1.1] — 2026-05-26
+
+### Fixed
+- **Followers-only posts not federated** — posts with `private` (followers-only) visibility were never delivered to remote followers. Only `public` and `unlisted` passed the visibility guard in the post handler.
+- **Unlisted posts had wrong ActivityPub addressing** — unlisted posts are now correctly addressed `to: [followers], cc: [Public]` per the Mastodon convention, making them discoverable in remote federated timelines without appearing in the public firehose. Previously `cc` was empty, causing unlisted posts to be invisible on many remote servers.
+
+---
+
 ## [1.1.0] — 2026-05-26
 
 Six federation health improvements modelled on patterns from Mastodon's source:
@@ -176,6 +184,7 @@ v2.0.0   — major: breaking DB changes, removed APIs, architectural rewrites
 
 Tag every release: `git tag -a v1.0.1 -m "Fix: description"` then `git push origin v1.0.1`.
 
+[1.1.1]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.1
 [1.1.0]: https://github.com/BishopGreer/canticle/releases/tag/v1.1.0
 [1.0.3]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.3
 [1.0.2]: https://github.com/BishopGreer/canticle/releases/tag/v1.0.2
