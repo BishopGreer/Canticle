@@ -4,7 +4,7 @@
 declare(strict_types=1);
 
 define('CANTICLE_ROOT', __DIR__);
-define('CANTICLE_VERSION', '1.0.0');
+define('CANTICLE_VERSION', '1.1.2');
 
 // ── Autoloader ────────────────────────────────────────────────────────────────
 spl_autoload_register(function (string $class): void {
