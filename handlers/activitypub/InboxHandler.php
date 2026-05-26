@@ -456,7 +456,7 @@ class InboxHandler
                 db()->update('statuses', [
                     'content'         => $obj['content'] ?? $status['content'],
                     'content_warning' => $obj['summary'] ?? $status['content_warning'],
-                    'edited_at'       => date('Y-m-d H:i:s'),
+                    'edited_at'       => gmdate('Y-m-d H:i:s'),
                 ], 'id = ?', [$status['id']]);
             }
         }

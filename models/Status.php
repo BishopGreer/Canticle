@@ -47,7 +47,7 @@ class Status
     {
         $status = self::find($id);
         if (!$status) return;
-        db()->update('statuses', ['deleted_at' => date('Y-m-d H:i:s')], 'id = ?', [$id]);
+        db()->update('statuses', ['deleted_at' => gmdate('Y-m-d H:i:s')], 'id = ?', [$id]);
         if ($status['local_user_id']) {
             User::decrementCount($status['local_user_id'], 'statuses_count');
         }
